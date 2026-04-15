@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.js.map
+*.tsbuildinfo
+.env
+.env.local
+*.log
+npm-debug.log*
+
+# 1C debug project config (developer-specific, keep .example in repo)
+.1c-debug.json
