@@ -9,8 +9,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/1c-debug-mcp.git"
+    "url": "https://github.com/PavRedAlex/1c-debug-mcp.git"
   },
+  "bugs": {
+    "url": "https://github.com/PavRedAlex/1c-debug-mcp/issues"
+  },
+  "homepage": "https://github.com/PavRedAlex/1c-debug-mcp#readme",
   "keywords": [
     "1c",
     "1c-enterprise",
