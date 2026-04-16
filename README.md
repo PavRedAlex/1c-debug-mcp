@@ -517,9 +517,13 @@ MCP сервер использует HTTP Debug Protocol платформы 1С
 
 ## Лицензия
 
-MIT
+MIT License - свободное использование, модификация и распространение.
+
+См. [LICENSE](LICENSE) для подробностей.
 
 ## Авторы
+
+**Pavel Redkin (PavRedAlex)**
 
 Разработано для интеграции с AI-ассистентами через Model Context Protocol (MCP).
 

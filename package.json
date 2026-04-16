@@ -24,7 +24,7 @@
     "ai",
     "bsl"
   ],
-  "author": "Your Name",
+  "author": "Pavel Redkin (PavRedAlex)",
   "license": "MIT",
   "scripts": {
     "build": "tsc",
