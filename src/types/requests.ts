@@ -1,9 +1,10 @@
 export const NS = "http://v8.1c.ru/8.3/debugger/debugRDBGRequestResponse";
 
 export enum StepAction {
-  CONTINUE = "CONTINUE",
-  STEP_IN = "STEP_IN",
-  STEP_OUT = "STEP_OUT",
+  CONTINUE = "Continue",
+  STEP_IN = "StepIn",
+  STEP_OUT = "StepOut",
+  STEP_OVER = "StepOver",
 }
 
 export enum ModuleType {
@@ -22,6 +23,7 @@ export enum ModuleType {
 export enum DebugTargetType {
   Client = "Client",
   Server = "Server",
+  ServerEmulation = "ServerEmulation",
   BackgroundJob = "BackgroundJob",
   WebClient = "WebClient",
   MobileClient = "MobileClient",
@@ -32,12 +34,16 @@ export interface TargetID {
   id: string;
   seqno: number;
   appID?: string;
+  targetIDStr?: string;
 }
 
 export interface ModuleID {
   type: ModuleType;
   name: string;
   url?: string;
+  objectID?: string;
+  propertyID?: string;
+  extensionName?: string;
 }
 
 export interface Breakpoint {

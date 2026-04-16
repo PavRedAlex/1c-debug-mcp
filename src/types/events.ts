@@ -18,4 +18,11 @@ export interface QuitEvent {
   targetId: string;
 }
 
-export type DebugEventUnion = StopEvent | StartedEvent | QuitEvent;
+export interface ExprEvaluatedEvent {
+  type: "DBGUIExtCmdInfoExprEvaluated";
+  targetId: string;
+  expressionResultID: string;
+  evalData: unknown;
+}
+
+export type DebugEventUnion = StopEvent | StartedEvent | QuitEvent | ExprEvaluatedEvent;

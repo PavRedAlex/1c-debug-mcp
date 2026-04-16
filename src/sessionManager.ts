@@ -1,10 +1,12 @@
 import { v4 as uuidv4 } from "uuid";
+import type { BPWorkspaceInternal } from "./types/requests.js";
 
 export interface Session {
   id: string;
   url: string;
   alias: string;
   password?: string;
+  lastBreakpoints?: BPWorkspaceInternal;
 }
 
 export class NoSessionError extends Error {

@@ -8,6 +8,7 @@ export interface StackFrame {
 
 export interface DebugTarget {
   targetID: TargetID;
+  targetIDStr?: string;
   targetType: string;
   suspended: boolean;
   seqno?: number;
@@ -20,8 +21,36 @@ export interface Variable {
   expandable?: boolean;
 }
 
+export interface ContextPropertyData {
+  propName: string;       // base64 encoded
+  isReadable?: boolean;
+  isWritable?: boolean;
+  isReaded?: boolean;
+  errorStr?: string;      // base64 encoded, present when isReaded=false
+}
+
+export interface BaseValueInfoData {
+  typeCode?: number;
+  typeName?: string;
+  pres?: string;          // base64 encoded
+  presProcessedCorrectly?: boolean;
+}
+
+export interface CalculationResultContextPropertyInfo {
+  propInfo: ContextPropertyData;
+  valueInfo?: BaseValueInfoData;
+}
+
+export interface CalculationResultObjData {
+  viewInterface?: string;
+  valueOfContextPropInfo: CalculationResultContextPropertyInfo | CalculationResultContextPropertyInfo[];
+}
+
 export interface CalculationResultBaseData {
-  items: Variable[];
+  evalResultState?: string;
+  expressionResultID?: string;
+  errorOccurred?: boolean;
+  calculationResult?: CalculationResultObjData;
 }
 
 // Debug events from ping
@@ -70,7 +99,7 @@ export interface RDBGGetCallStackResponse {
 }
 
 export interface RDBGEvalLocalVariablesResponse {
-  result: CalculationResultBaseData;
+  result: CalculationResultBaseData | CalculationResultBaseData[];
 }
 
 export interface RDBGSetBreakpointsResponse {}

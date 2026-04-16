@@ -2,6 +2,7 @@ import type { DebugClient } from "../debugClient.js";
 import type { SessionManager } from "../sessionManager.js";
 import type { PingLoop } from "../pingLoop.js";
 import type { EventQueue } from "../eventQueue.js";
+import type { Config } from "../config.js";
 import { DebugTargetType } from "../types/requests.js";
 
 export function createAttachTool(
@@ -9,14 +10,25 @@ export function createAttachTool(
   sessionManager: SessionManager,
   pingLoop: PingLoop,
   eventQueue: EventQueue,
+  config: Config,
 ) {
   return async (args: {
-    url: string;
-    infobaseAlias: string;
+    url?: string;
+    infobaseAlias?: string;
     autoAttach?: boolean;
     password?: string;
   }) => {
-    const { url, infobaseAlias, autoAttach = true, password } = args;
+    const url = args.url ?? config.url;
+    const infobaseAlias = args.infobaseAlias ?? config.alias;
+    const autoAttach = args.autoAttach ?? true;
+    const password = args.password ?? config.password;
+
+    if (!url || !infobaseAlias) {
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ error: "url and infobaseAlias are required. Set ONEC_DEBUG_URL and ONEC_INFOBASE_ALIAS in mcp.json env section, or pass them explicitly." }) }],
+        isError: true,
+      };
+    }
 
     // Step 1: verify connectivity
     try {
@@ -33,8 +45,14 @@ export function createAttachTool(
 
     // Step 3: attach
     try {
+      process.stderr.write(`[1c-debug] calling debugClient.attach...\n`);
       await debugClient.attach(session);
-      await debugClient.initSettings(session);
+      // initSettings with breakOnNextLine=false
+      try {
+        await debugClient.initSettings(session, false);
+      } catch (err) {
+        process.stderr.write(`[1c-debug] initSettings failed: ${String(err)}\n`);
+      }
     } catch (err) {
       sessionManager.clearSession();
       return {
@@ -42,13 +60,13 @@ export function createAttachTool(
         isError: true,
       };
     }
-
     // Step 4: auto-attach settings
     if (autoAttach) {
       try {
         await debugClient.setAutoAttach(session, [
           DebugTargetType.Client,
           DebugTargetType.Server,
+          DebugTargetType.ServerEmulation,
           DebugTargetType.BackgroundJob,
         ]);
       } catch {
@@ -56,7 +74,21 @@ export function createAttachTool(
       }
     }
 
-    // Step 5: start ping loop
+    // Step 5: attach existing targets explicitly
+    try {
+      const targets = await debugClient.getTargets(session);
+      for (const target of targets) {
+        try {
+          // Pass targetIDStr for reliable identification
+          const tid = { ...target.targetID, targetIDStr: target.targetIDStr };
+          await debugClient.attachDetachTargets(session, tid, true);
+        } catch (err) {
+          process.stderr.write(`[1c-debug] attach target failed: ${String(err)}\n`);
+        }
+      }
+    } catch { /* non-fatal */ }
+
+    // Step 6: start ping loop
     pingLoop.start(session, debugClient, eventQueue);
 
     return {

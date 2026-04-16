@@ -1,4 +1,4 @@
-import { XMLBuilder, XMLParser, XMLValidator } from "fast-xml-parser";
+import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 export const NS = "http://v8.1c.ru/8.3/debugger/debugRDBGRequestResponse";
 
@@ -12,12 +12,35 @@ export class XmlParseError extends Error {
   }
 }
 
-const builder = new XMLBuilder({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-  format: false,
-  suppressEmptyNode: false,
-});
+// ---------------------------------------------------------------------------
+// Manual XML builder — avoids fast-xml-parser encoding issues with Cyrillic
+// ---------------------------------------------------------------------------
+
+function escapeXml(value: unknown): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function buildXmlNode(tag: string, value: unknown): string {
+  if (value === null || value === undefined) {
+    return `<${tag}/>`;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => buildXmlNode(tag, item)).join("");
+  }
+  if (typeof value === "object") {
+    const inner = Object.entries(value as Record<string, unknown>)
+      .filter(([k]) => !k.startsWith("@_"))
+      .map(([k, v]) => buildXmlNode(k, v))
+      .join("");
+    return `<${tag}>${inner}</${tag}>`;
+  }
+  return `<${tag}>${escapeXml(value)}</${tag}>`;
+}
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -35,18 +58,15 @@ const parser = new XMLParser({
  * or defaults to "request".
  */
 export function serialize(request: Record<string, unknown>): string {
-  const typeName = (request["_type"] as string | undefined) ?? "request";
   const payload = { ...request };
   delete payload["_type"];
 
-  const doc = {
-    [typeName]: {
-      "@_xmlns": NS,
-      ...payload,
-    },
-  };
+  const inner = Object.entries(payload)
+    .map(([k, v]) => buildXmlNode(k, v))
+    .join("");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>${builder.build(doc)}`;
+  // Platform expects root element "request" with the debug namespace
+  return `<?xml version="1.0" encoding="UTF-8"?><request xmlns="${NS}">${inner}</request>`;
 }
 
 /**

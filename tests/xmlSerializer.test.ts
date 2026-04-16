@@ -60,7 +60,8 @@ describe("XmlSerializer — unit tests", () => {
   it("serializes attach request with correct root element", () => {
     const req = makeAttachRequest("test-uuid", "DefAlias");
     const xml = serialize(req);
-    expect(xml).toContain("RDBGAttachDebugUIRequest");
+    // serialize() always uses <request> as root element (1C protocol requirement)
+    expect(xml).toContain("<request");
     expect(xml).toContain("test-uuid");
     expect(xml).toContain("DefAlias");
   });
@@ -84,7 +85,7 @@ describe("XmlSerializer — unit tests", () => {
   it("serializes step request with correct action", () => {
     const req = makeStepRequest("uuid", "DefAlias", "target-1", StepAction.STEP_IN);
     const xml = serialize(req);
-    expect(xml).toContain("STEP_IN");
+    expect(xml).toContain("StepIn");
     expect(xml).toContain("target-1");
   });
 
