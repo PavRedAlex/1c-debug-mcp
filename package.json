@@ -24,7 +24,7 @@
     "ai",
     "bsl"
   ],
-  "author": "Pavel Redkin (PavRedAlex)",
+  "author": "PavRedAlex",
   "license": "MIT",
   "scripts": {
     "build": "tsc",

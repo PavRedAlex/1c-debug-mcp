@@ -523,7 +523,7 @@ MIT License - свободное использование, модификац�
 
 ## Авторы
 
-**Pavel Redkin (PavRedAlex)**
+**PavRedAlex**
 
 Разработано для интеграции с AI-ассистентами через Model Context Protocol (MCP).
 
