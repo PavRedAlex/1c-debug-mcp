@@ -150,11 +150,70 @@ const stop = await mcp_1c_debug_wait_for_stop();
 await mcp_1c_debug_step_in({ targetId: stop.targetId });
 ```
 
-## 8. Полезные ссылки
+## 8. Настройка отладки в своём проекте
+
+Если вы хотите добавить отладку в существующий 1С проект, есть два способа.
+
+### Способ 1 — Автоматически через Kiro Steering
+
+В папке [`examples/kiro-steering/`](examples/kiro-steering/) лежат готовые steering файлы для Kiro:
+
+- `1c-debug-setup.md` — помогает быстро настроить отладку в проекте: задаёт нужные вопросы и создаёт `mcp.json`
+- `1c-debug-mcp.md` — правила работы с инструментами отладки для AI-ассистента
+
+**Установка:**
+
+```bash
+# Глобально (для всех проектов)
+copy examples\kiro-steering\1c-debug-setup.md %USERPROFILE%\.kiro\steering\
+copy examples\kiro-steering\1c-debug-mcp.md %USERPROFILE%\.kiro\steering\
+
+# Или только для текущего проекта
+copy examples\kiro-steering\1c-debug-setup.md .kiro\steering\
+copy examples\kiro-steering\1c-debug-mcp.md .kiro\steering\
+```
+
+После установки в чате Kiro напишите `#1c-debug-setup` и скажите:
+
+```
+Добавь отладку в этот проект
+```
+
+Kiro спросит параметры (сервер, база, пути к исходникам) и создаст `mcp.json` автоматически.
+
+### Способ 2 — Вручную
+
+Создайте `.kiro/settings/mcp.json` в корне вашего проекта:
+
+```json
+{
+  "mcpServers": {
+    "1c-debug": {
+      "command": "node",
+      "args": ["//C/path/to/1c-debug-mcp/dist/index.js"],
+      "env": {
+        "ONEC_DEBUG_URL": "http://localhost:1550",
+        "ONEC_INFOBASE_ALIAS": "DefAlias",
+        "ONEC_CF_PATH": "C:\\path\\to\\your\\src\\cf",
+        "ONEC_CFE_PATHS": "C:\\path\\to\\your\\src\\cfe",
+        "ONEC_EPF_PATHS": "C:\\path\\to\\your\\src\\epf"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+> Все пути должны быть **абсолютными** — `${workspaceFolder}` не работает в mcp.json.
+> В `args` используйте формат `//C/...`, в `env` — обычный Windows формат `C:\\...`.
+
+## 9. Полезные ссылки
 
 - [README.md](README.md) — полная документация
 - [EXAMPLES.md](EXAMPLES.md) — примеры использования
 - [FAQ.md](FAQ.md) — часто задаваемые вопросы
+- [examples/kiro-steering/](examples/kiro-steering/) — готовые steering файлы для Kiro
 
 ## Проблемы?
 
