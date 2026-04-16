@@ -12,8 +12,8 @@ inclusion: manual
 1. Прочитай `~/.kiro/settings/mcp.json` (глобальный конфиг)
 2. Прочитай `.kiro/settings/mcp.json` в текущем проекте (если существует)
 3. Если секция `1c-debug` найдена — возьми `args` из неё (путь к `dist/index.js`)
-4. Если не найдена — спроси пользователя: "Укажи путь к папке где установлен 1c-debug-mcp"
-   и сформируй `args` как `["//указанный/путь/dist/index.js"]`
+4. Если не найдена — спроси пользователя: "Укажи полный абсолютный путь к папке где установлен 1c-debug-mcp"
+   и сформируй `args` как `["//C/полный/путь/1c-debug-mcp/dist/index.js"]`
 
 ## Шаг 2 — Узнай параметры
 
@@ -21,9 +21,9 @@ inclusion: manual
 
 1. **Сервер отладки** — локальный (`localhost:1550`) или удалённый? Если удалённый — какой IP/хост и порт?
 2. **Алиас базы** — для локальной базы обычно `DefAlias`, для серверной — имя базы на сервере. Какой у тебя?
-3. **Исходники конфигурации** — есть ли выгруженная конфигурация в файлы? Если да — путь к папке.
-4. **Расширения** — есть ли расширения конфигурации? Если да — пути к папкам (через запятую).
-5. **Внешние обработки** — есть ли EPF файлы для отладки? Если да — пути к папкам (через запятую).
+3. **Исходники конфигурации** — есть ли выгруженная конфигурация в файлы? Если да — полный путь к папке.
+4. **Расширения** — есть ли расширения конфигурации? Если да — полные пути к папкам (через запятую).
+5. **Внешние обработки** — есть ли EPF файлы для отладки? Если да — полные пути к папкам (через запятую).
 6. **Пароль** — требует ли сервер отладки пароль?
 
 ## Шаг 3 — Создай файл конфигурации
@@ -37,7 +37,7 @@ inclusion: manual
   "mcpServers": {
     "1c-debug": {
       "command": "node",
-      "args": ["//path/to/1c-debug-mcp/dist/index.js"],
+      "args": ["//C/path/to/1c-debug-mcp/dist/index.js"],
       "env": {
         "ONEC_DEBUG_URL": "http://localhost:1550",
         "ONEC_INFOBASE_ALIAS": "DefAlias"
@@ -56,13 +56,13 @@ inclusion: manual
   "mcpServers": {
     "1c-debug": {
       "command": "node",
-      "args": ["//path/to/1c-debug-mcp/dist/index.js"],
+      "args": ["//C/path/to/1c-debug-mcp/dist/index.js"],
       "env": {
         "ONEC_DEBUG_URL": "http://localhost:1550",
         "ONEC_INFOBASE_ALIAS": "DefAlias",
-        "ONEC_CF_PATH": "\\src\\cf",
-        "ONEC_CFE_PATHS": "\\src\\cfe",
-        "ONEC_EPF_PATHS": "\\src\\epf"
+        "ONEC_CF_PATH": "C:\\full\\path\\to\\src\\cf",
+        "ONEC_CFE_PATHS": "C:\\full\\path\\to\\src\\cfe",
+        "ONEC_EPF_PATHS": "C:\\full\\path\\to\\src\\epf"
       },
       "disabled": false,
       "autoApprove": []
@@ -78,12 +78,12 @@ inclusion: manual
   "mcpServers": {
     "1c-debug": {
       "command": "node",
-      "args": ["//path/to/1c-debug-mcp/dist/index.js"],
+      "args": ["//C/path/to/1c-debug-mcp/dist/index.js"],
       "env": {
         "ONEC_DEBUG_URL": "http://192.168.1.100:1550",
         "ONEC_INFOBASE_ALIAS": "production_base",
         "ONEC_DEBUG_PASSWORD": "secret",
-        "ONEC_CF_PATH": "\\src\\cf"
+        "ONEC_CF_PATH": "C:\\full\\path\\to\\src\\cf"
       },
       "disabled": false,
       "autoApprove": []
@@ -114,5 +114,7 @@ inclusion: manual
 ## Важные замечания
 
 - Если `.kiro/settings/mcp.json` уже существует — **не перезаписывай**, только добавь секцию `1c-debug` в `mcpServers`
-- На Windows пути указывай в формате `//C/Users/...` (двойной слэш)
+- Все пути должны быть **абсолютными** — `${workspaceFolder}` и относительные пути не работают в mcp.json
+- В `args` (путь к node скрипту) используй формат `//C/Users/...` (двойной слэш, буква диска без двоеточия)
+- В `env` (пути к исходникам) используй обычный Windows формат `C:\\path\\to\\folder`
 - Без `ONEC_CF_PATH` отладка работает, но в стеке вызовов будут показываться только GUID вместо имён модулей
