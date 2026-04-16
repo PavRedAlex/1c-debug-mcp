@@ -8,8 +8,25 @@ import { join, resolve } from "path";
 export class MetadataProvider {
   private readonly objectIdToName = new Map<string, string>();
   private readonly objectIdToExtension = new Map<string, string>();
+  private _ready = false;
+  readonly whenReady: Promise<void>;
 
   constructor(cfPath?: string, cfePaths?: string[], epfPaths?: string[]) {
+    this.whenReady = new Promise<void>(resolve => {
+      // Load metadata asynchronously so MCP server can start immediately
+      setImmediate(() => {
+        this._loadSync(cfPath, cfePaths, epfPaths);
+        this._ready = true;
+        resolve();
+      });
+    });
+  }
+
+  get isReady(): boolean {
+    return this._ready;
+  }
+
+  private _loadSync(cfPath?: string, cfePaths?: string[], epfPaths?: string[]): void {
     if (cfPath) {
       const absPath = resolve(process.cwd(), cfPath);
       if (existsSync(absPath)) {

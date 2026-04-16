@@ -227,3 +227,8 @@ if (config.url && config.alias) {
 const transport = new StdioServerTransport();
 await server.connect(transport);
 process.stderr.write("[1c-debug] MCP server started\n");
+
+// Log when metadata finishes loading in background
+metadata.whenReady.then(() => {
+  process.stderr.write("[1c-debug] Metadata loaded and ready\n");
+});
