@@ -42,6 +42,10 @@ MCP сервер `1c-debug` предоставляет 13 инструменто
 
 - `mcp_1c_debug_raw_request` — отправка произвольного XML запроса
 
+### Метаданные
+
+- `mcp_1c_debug_reload_metadata` — перезагрузка метаданных из исходников без перезапуска сервера
+
 ## Правила работы
 
 ### 1. Всегда начинай с подключения
@@ -202,6 +206,17 @@ await mcp_1c_debug_continue({ targetId: stop.targetId });
 
 Если настроены `ONEC_CF_PATH`, `ONEC_CFE_PATHS`, `ONEC_EPF_PATHS` в mcp.json —
 сервер автоматически резолвит `objectID` → `CommonModule.ОбщегоНазначения`.
+
+Метаданные загружаются асинхронно при старте. Статус виден в ответе `get_targets`:
+- `{ "ready": false, "message": "Metadata is still loading..." }` — ещё грузится
+- `{ "ready": true, "moduleCount": 25594 }` — загружено
+
+После обновления исходников конфигурации вызови `reload_metadata` чтобы обновить без перезапуска:
+
+```typescript
+await mcp_1c_debug_reload_metadata();
+// { "success": true, "moduleCount": 25594 }
+```
 
 ## Типичные ошибки
 
