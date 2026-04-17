@@ -35,7 +35,8 @@ const debugClient = new DebugClient();
 const sessionManager = new SessionManager();
 const pingLoop = new PingLoop();
 const eventQueue = new EventQueue();
-const metadata = new MetadataProvider(config.cfPath, config.cfePaths, config.epfPaths);
+// metadata is created empty now, loaded after server.connect() to avoid startup timeout
+const metadata = new MetadataProvider();
 
 // Tool handlers
 const attachTool = createAttachTool(debugClient, sessionManager, pingLoop, eventQueue, config);
@@ -228,7 +229,9 @@ const transport = new StdioServerTransport();
 await server.connect(transport);
 process.stderr.write("[1c-debug] MCP server started\n");
 
-// Log when metadata finishes loading in background
-metadata.whenReady.then(() => {
-  process.stderr.write("[1c-debug] Metadata loaded and ready\n");
-});
+// Load metadata AFTER server is connected — avoids blocking MCP handshake
+setTimeout(() => {
+  metadata.load(config.cfPath, config.cfePaths, config.epfPaths).then(() => {
+    process.stderr.write("[1c-debug] Metadata loaded and ready\n");
+  });
+}, 0);

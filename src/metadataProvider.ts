@@ -8,22 +8,19 @@ import { join, resolve } from "path";
 export class MetadataProvider {
   private readonly objectIdToName = new Map<string, string>();
   private readonly objectIdToExtension = new Map<string, string>();
-  private _ready = false;
-  readonly whenReady: Promise<void>;
 
-  constructor(cfPath?: string, cfePaths?: string[], epfPaths?: string[]) {
-    this.whenReady = new Promise<void>(resolve => {
-      // Load metadata asynchronously so MCP server can start immediately
-      setImmediate(() => {
-        this._loadSync(cfPath, cfePaths, epfPaths);
-        this._ready = true;
-        resolve();
-      });
-    });
+  constructor() {
+    // Empty — call load() after MCP server has started
   }
 
-  get isReady(): boolean {
-    return this._ready;
+  async load(cfPath?: string, cfePaths?: string[], epfPaths?: string[]): Promise<void> {
+    return new Promise<void>(resolve => {
+      // Run in next tick so MCP handshake completes first
+      setTimeout(() => {
+        this._loadSync(cfPath, cfePaths, epfPaths);
+        resolve();
+      }, 0);
+    });
   }
 
   private _loadSync(cfPath?: string, cfePaths?: string[], epfPaths?: string[]): void {
