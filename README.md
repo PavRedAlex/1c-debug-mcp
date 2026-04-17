@@ -429,6 +429,27 @@ objectID: 4eee25b1-2da6-459b-953b-4c8d519c9bce
 
 Без метаданных будет показан только `objectID`.
 
+### Время загрузки метаданных
+
+Метаданные загружаются **асинхронно в фоне** после старта сервера — MCP подключается мгновенно, но резолвинг имён модулей и авторезолв `objectID` в `set_breakpoints` будут недоступны пока загрузка не завершится.
+
+Для больших конфигураций (20 000+ модулей) загрузка может занять **1–2 минуты**.
+
+Статус загрузки виден в ответе `get_targets`:
+```json
+{ "metadata": { "ready": false, "message": "Metadata is still loading in background..." } }
+{ "metadata": { "ready": true, "moduleCount": 25594 } }
+```
+
+А также в логах MCP сервера:
+```
+[MetadataProvider] Loaded 25421 modules from .../src/cf
+[MetadataProvider] Loaded 592 modules from extension Адаптация (...)
+[1c-debug] Metadata loaded and ready
+```
+
+После завершения загрузки `set_breakpoints` автоматически резолвит `objectID` по имени модуля — указывать его явно не нужно.
+
 ## Известные ограничения
 
 ### Внешние обработки (EPF)
