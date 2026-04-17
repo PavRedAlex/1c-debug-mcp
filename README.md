@@ -175,7 +175,7 @@ await set_breakpoints({
   moduleName: "ОбщегоНазначения",
   moduleType: "CommonModule",
   lines: [42, 100],
-  objectID: "4eee25b1-2da6-459b-953b-4c8d519c9bce"
+  objectID: "4eee25b1-2da6-459b-953b-4c8d519c9bce"  // Опционально, если отсутствует резолвится автоматически из метаданных
 });
 ```
 
