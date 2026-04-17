@@ -9,6 +9,9 @@ export class MetadataProvider {
   private readonly objectIdToName = new Map<string, string>();
   private readonly objectIdToExtension = new Map<string, string>();
   private _ready = false;
+  private _cfPath?: string;
+  private _cfePaths?: string[];
+  private _epfPaths?: string[];
 
   get isReady(): boolean { return this._ready; }
   get moduleCount(): number { return this.objectIdToName.size; }
@@ -18,6 +21,21 @@ export class MetadataProvider {
   }
 
   async load(cfPath?: string, cfePaths?: string[], epfPaths?: string[]): Promise<void> {
+    this._cfPath = cfPath;
+    this._cfePaths = cfePaths;
+    this._epfPaths = epfPaths;
+    await this._doLoad(cfPath, cfePaths, epfPaths);
+  }
+
+  async reload(): Promise<{ moduleCount: number }> {
+    this._ready = false;
+    this.objectIdToName.clear();
+    this.objectIdToExtension.clear();
+    await this._doLoad(this._cfPath, this._cfePaths, this._epfPaths);
+    return { moduleCount: this.objectIdToName.size };
+  }
+
+  private async _doLoad(cfPath?: string, cfePaths?: string[], epfPaths?: string[]): Promise<void> {
     if (cfPath) {
       const absPath = resolve(process.cwd(), cfPath);
       if (await this.exists(absPath)) {

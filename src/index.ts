@@ -182,6 +182,20 @@ server.tool(
 );
 
 server.tool(
+  "reload_metadata",
+  "Reload metadata from source files (use after updating configuration sources)",
+  {},
+  async () => {
+    process.stderr.write("[1c-debug] Reloading metadata...\n");
+    const result = await metadata.reload();
+    process.stderr.write(`[1c-debug] Metadata reloaded: ${result.moduleCount} modules\n`);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ success: true, moduleCount: result.moduleCount }) }],
+    };
+  },
+);
+
+server.tool(
   "get_variables",
   "Get local variables of a stopped debug target",
   {
