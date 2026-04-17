@@ -60,7 +60,17 @@ export function createSetBreakpointsTool(
     objectID?: string;
     targetId?: string;
   }) => {
-    const { moduleName, moduleType = ModuleType.CommonModule, lines, objectID, targetId } = args;
+    const { moduleName, moduleType = ModuleType.CommonModule, lines, targetId } = args;
+    // Auto-resolve objectID from metadata if not provided
+    let objectID = args.objectID;
+    if (!objectID && metadata) {
+      // Try "CommonModule.ModuleName", "Document.ModuleName", etc.
+      objectID = metadata.resolveObjectId(`${MODULE_TYPE_PREFIX[moduleType] ?? moduleType}.${moduleName}`)
+        ?? metadata.resolveObjectId(moduleName);
+      if (objectID) {
+        process.stderr.write(`[breakpoints] Auto-resolved objectID for ${moduleName}: ${objectID}\n`);
+      }
+    }
 
     if (!lines || lines.length === 0) {
       return {

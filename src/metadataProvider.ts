@@ -101,6 +101,18 @@ export class MetadataProvider {
     return this.objectIdToExtension.get(objectID.toLowerCase()) ?? "";
   }
 
+  /** Find objectID by module label, e.g. "CommonModule.ОбновлениеИнформационнойБазы" or just "ОбновлениеИнформационнойБазы" */
+  resolveObjectId(moduleName: string): string | undefined {
+    const lower = moduleName.toLowerCase();
+    for (const [uuid, label] of this.objectIdToName) {
+      if (label.toLowerCase() === lower) return uuid;
+      // match by short name after last dot, e.g. "ОбновлениеИнформационнойБазы"
+      const short = label.split(".").pop()?.toLowerCase();
+      if (short === lower) return uuid;
+    }
+    return undefined;
+  }
+
   private async exists(p: string): Promise<boolean> {
     return fsp.access(p).then(() => true).catch(() => false);
   }
