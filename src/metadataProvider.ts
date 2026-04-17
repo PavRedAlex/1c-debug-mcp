@@ -8,6 +8,10 @@ import { join, resolve } from "path";
 export class MetadataProvider {
   private readonly objectIdToName = new Map<string, string>();
   private readonly objectIdToExtension = new Map<string, string>();
+  private _ready = false;
+
+  get isReady(): boolean { return this._ready; }
+  get moduleCount(): number { return this.objectIdToName.size; }
 
   constructor() {
     // Empty — call load() after MCP server has started
@@ -67,6 +71,8 @@ export class MetadataProvider {
         process.stderr.write(`[MetadataProvider] Loaded ${this.objectIdToName.size - before} modules from EPF path ${absPath}\n`);
       }
     }
+
+    this._ready = true;
   }
 
   resolveModuleName(objectID: string): string | undefined {

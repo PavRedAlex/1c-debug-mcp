@@ -41,7 +41,7 @@ const metadata = new MetadataProvider();
 // Tool handlers
 const attachTool = createAttachTool(debugClient, sessionManager, pingLoop, eventQueue, config);
 const detachTool = createDetachTool(debugClient, sessionManager, pingLoop);
-const getTargetsTool = createGetTargetsTool(debugClient, sessionManager);
+const getTargetsTool = createGetTargetsTool(debugClient, sessionManager, metadata);
 const setBreakpointsTool = createSetBreakpointsTool(debugClient, sessionManager, metadata);
 const clearBreakpointsTool = createClearBreakpointsTool(debugClient, sessionManager);
 const continueTool = createContinueTool(debugClient, sessionManager);
