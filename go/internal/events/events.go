@@ -20,14 +20,23 @@ type StopEvent struct {
 type EvalResult struct {
 	TypeName string
 	Value    string
+	Items    []EvalItem // populated for evalLocalVariables (multiple variables)
+}
+
+// EvalItem represents a single variable in an evalLocalVariables result.
+type EvalItem struct {
+	Name     string
+	TypeName string
+	Value    string
 }
 
 // Queue manages stop events and eval result delivery between PingLoop and tools.
 type Queue struct {
-	mu          sync.Mutex
-	pendingStop *StopEvent
-	stopCh      chan StopEvent
-	evalWaiters map[string]chan EvalResult
+	mu            sync.Mutex
+	pendingStop   *StopEvent
+	lastCallStack *StopEvent // last stop event, never cleared — for get_call_stack
+	stopCh        chan StopEvent
+	evalWaiters   map[string]chan EvalResult
 }
 
 // New creates a new Queue.
@@ -42,6 +51,7 @@ func New() *Queue {
 func (q *Queue) EnqueueStop(e StopEvent) {
 	q.mu.Lock()
 	q.pendingStop = &e
+	q.lastCallStack = &e
 	q.mu.Unlock()
 
 	// Non-blocking send — drain first if full
@@ -81,10 +91,11 @@ func (q *Queue) WaitForStop(ctx context.Context) (*StopEvent, error) {
 }
 
 // GetLastCallStack returns the last stop event without consuming it.
+// Unlike WaitForStop, this is never cleared — always returns the most recent stop.
 func (q *Queue) GetLastCallStack() *StopEvent {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return q.pendingStop
+	return q.lastCallStack
 }
 
 // ClearPendingStop removes any pending stop event.

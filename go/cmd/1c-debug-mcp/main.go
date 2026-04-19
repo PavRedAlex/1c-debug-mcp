@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/1c-debug-mcp/go/internal/client"
 	"github.com/1c-debug-mcp/go/internal/events"
+	"github.com/1c-debug-mcp/go/internal/logger"
 	"github.com/1c-debug-mcp/go/internal/metadata"
 	"github.com/1c-debug-mcp/go/internal/ping"
 	"github.com/1c-debug-mcp/go/internal/session"
@@ -22,11 +22,12 @@ import (
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "[1c-debug] panic: %v\n", r)
+			logger.Error("panic: %v", r)
 			os.Exit(1)
 		}
 	}()
 
+	logger.Init()
 	cfg := parseConfig()
 
 	// Create components
@@ -52,16 +53,16 @@ func main() {
 
 	// Log config
 	if cfg.URL != "" && cfg.Alias != "" {
-		fmt.Fprintf(os.Stderr, "[1c-debug] Config: url=%s, alias=%s, cfPath=%s\n",
+		logger.Info("Config: url=%s, alias=%s, cfPath=%s",
 			cfg.URL, cfg.Alias, orStr(cfg.CFPath, "not set"))
 	} else {
-		fmt.Fprintf(os.Stderr, "[1c-debug] WARNING: url or alias not configured. Set ONEC_DEBUG_URL and ONEC_INFOBASE_ALIAS in mcp.json env section.\n")
+		logger.Error("WARNING: url or alias not configured. Set ONEC_DEBUG_URL and ONEC_INFOBASE_ALIAS in mcp.json env section.")
 	}
 
 	// Create MCP server
 	mcpServer := server.NewMCPServer("1c-debug", "1.0.0")
 
-	// Register all 13 tools
+	// Register all tools
 	registerTools(mcpServer, deps)
 
 	// Handle graceful shutdown
@@ -69,7 +70,7 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		fmt.Fprintf(os.Stderr, "[1c-debug] Shutting down...\n")
+		logger.Info("Shutting down...")
 		pingLoop.Stop()
 		if s := sessionMgr.Get(); s != nil {
 			_ = debugClient.Detach(s)
@@ -78,11 +79,11 @@ func main() {
 		os.Exit(0)
 	}()
 
-	fmt.Fprintf(os.Stderr, "[1c-debug] MCP server started\n")
+	logger.Info("MCP server started")
 
 	// Start stdio server (blocks until stdin closes)
 	if err := server.ServeStdio(mcpServer); err != nil {
-		fmt.Fprintf(os.Stderr, "[1c-debug] Server error: %v\n", err)
+		logger.Error("Server error: %v", err)
 		os.Exit(1)
 	}
 }
@@ -106,6 +107,13 @@ func registerTools(s *server.MCPServer, deps *tools.Deps) {
 		return tools.HandleDetach(deps, req.GetArguments()), nil
 	})
 
+	// force_detach
+	s.AddTool(mcp.NewTool("force_detach",
+		mcp.WithDescription("Forcefully stop ping loop and clear session (use when ibInDebug or session is stuck)"),
+	), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return tools.HandleForceDetach(deps, req.GetArguments()), nil
+	})
+
 	// get_targets
 	s.AddTool(mcp.NewTool("get_targets",
 		mcp.WithDescription("Get list of connected debug targets (1C processes)"),
@@ -120,6 +128,7 @@ func registerTools(s *server.MCPServer, deps *tools.Deps) {
 		mcp.WithString("moduleType", mcp.Description("Module type: CommonModule, ObjectModule, FormModule, ManagerModule, etc.")),
 		mcp.WithArray("lines", mcp.Required(), mcp.Description("Line numbers to set breakpoints on")),
 		mcp.WithString("objectID", mcp.Description("Object GUID from metadata. Auto-resolved if not provided.")),
+		mcp.WithString("extensionName", mcp.Description("Extension name to search in. Empty means main configuration.")),
 		mcp.WithString("targetId", mcp.Description("Debug target ID")),
 	), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return tools.HandleSetBreakpoints(deps, req.GetArguments()), nil
@@ -158,8 +167,8 @@ func registerTools(s *server.MCPServer, deps *tools.Deps) {
 
 	// pause
 	s.AddTool(mcp.NewTool("pause",
-		mcp.WithDescription("Pause execution of a debug target on the next statement"),
-		mcp.WithString("targetId", mcp.Required(), mcp.Description("Debug target ID")),
+		mcp.WithDescription("Pause execution on the next BSL statement (sets breakOnNextLine=true)"),
+		mcp.WithString("targetId", mcp.Description("Debug target ID (optional, for compatibility)")),
 	), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return tools.HandlePause(deps, req.GetArguments()), nil
 	})
@@ -204,6 +213,14 @@ func registerTools(s *server.MCPServer, deps *tools.Deps) {
 		mcp.WithDescription("Reload metadata from source files (use after updating configuration sources)"),
 	), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return tools.HandleReloadMetadata(deps, req.GetArguments()), nil
+	})
+
+	// get_call_stack
+	s.AddTool(mcp.NewTool("get_call_stack",
+		mcp.WithDescription("Get call stack of a stopped debug target (from last stop event)"),
+		mcp.WithString("targetId", mcp.Required(), mcp.Description("Debug target ID")),
+	), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return tools.HandleGetCallStack(deps, req.GetArguments()), nil
 	})
 }
 

@@ -1,14 +1,17 @@
 # Quick Start — Быстрый старт
 
-Минимальная инструкция для начала работы с 1C Debug MCP Server.
+Минимальная инструкция для начала работы с 1C Debug MCP Server (Go).
 
-## 1. Установка
+## 1. Получить бинарник
+
+Скачай готовый бинарник из релизов или собери из исходников:
 
 ```bash
-cd 1c-debug-mcp
-npm install
-npm run build
+cd 1c-debug-mcp/go
+go build -o dist/1c-debug-mcp.exe ./cmd/1c-debug-mcp/
 ```
+
+Node.js не нужен — это самодостаточный Go-бинарник.
 
 ## 2. Запуск сервера отладки 1С
 
@@ -28,23 +31,26 @@ dbgs.exe --port=1550 --addr=localhost
 {
   "mcpServers": {
     "1c-debug": {
-      "command": "node",
-      "args": ["/path/to/1c-debug-mcp/dist/index.js"],
+      "command": "C:\\path\\to\\1c-debug-mcp\\go\\dist\\1c-debug-mcp.exe",
       "env": {
         "ONEC_DEBUG_URL": "http://localhost:1550",
-        "ONEC_INFOBASE_ALIAS": "DefAlias"
-      }
+        "ONEC_INFOBASE_ALIAS": "DefAlias",
+        "ONEC_CF_PATH": "C:\\path\\to\\src\\cf",
+        "ONEC_LOG_LEVEL": "info",
+        "ONEC_LOG_FILE": "C:\\Logs\\1c-debug.log"
+      },
+      "type": "stdio",
+      "disabled": false,
+      "autoApprove": ["get_targets", "wait_for_stop", "get_variables", "evaluate"]
     }
   }
 }
 ```
 
 **Замените:**
-- `/path/to/1c-debug-mcp` — на реальный путь к проекту
-- `DefAlias` — на имя вашей информационной базы:
-  - Для локальной базы: обычно `DefAlias` (из ibases.v8i)
-  - Для серверной базы: реальное имя базы на сервере (например, `production_base`)
-- `http://localhost:1550` — на URL удалённого сервера (например, `http://192.168.1.100:1550`), если используете удалённую отладку
+- Путь к бинарнику — на реальный путь к `1c-debug-mcp.exe`
+- `DefAlias` — на имя вашей информационной базы
+- `ONEC_CF_PATH` — на путь к выгруженной конфигурации (опционально, для резолвинга имён модулей)
 
 ## 4. Перезапуск MCP
 
@@ -52,9 +58,7 @@ dbgs.exe --port=1550 --addr=localhost
 
 ## 5. Первая отладка
 
-### Через AI-ассистента (Kiro/Claude)
-
-Скажите AI:
+### Подключение и точка останова
 
 ```
 Подключись к серверу отладки 1С и установи точку останова 
@@ -63,13 +67,9 @@ dbgs.exe --port=1550 --addr=localhost
 
 AI выполнит:
 
-```typescript
-await mcp_1c_debug_attach();
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ОбщегоНазначения",
-  moduleType: "CommonModule",
-  lines: [42]
-});
+```
+mcp_1c_debug_attach()
+mcp_1c_debug_set_breakpoints(moduleName="ОбщегоНазначения", moduleType="CommonModule", lines=[42])
 ```
 
 ### Выполните код в 1С
@@ -78,169 +78,117 @@ await mcp_1c_debug_set_breakpoints({
 
 ### Дождитесь остановки
 
-AI автоматически дождётся остановки и покажет информацию:
-
 ```
-Stopped at CommonModule.ОбщегоНазначения:42
-Variables: Параметр1 = "Значение", Параметр2 = 123
+mcp_1c_debug_wait_for_stop()
+→ Stopped at CommonModule.ОбщегоНазначения:42
+mcp_1c_debug_get_variables(targetId="...")
+→ Variables: Параметр1 = "Значение"
 ```
 
 ## 6. Базовые команды
 
 ### Подключение
 
-```typescript
-await mcp_1c_debug_attach();
+```
+mcp_1c_debug_attach()
 ```
 
-### Установка точки останова
+### Установка точки останова (авторезолв objectID из метаданных)
 
-```typescript
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ИмяМодуля",
-  moduleType: "CommonModule",
-  lines: [42, 100]
-});
+```
+mcp_1c_debug_set_breakpoints(moduleName="ИмяМодуля", moduleType="CommonModule", lines=[42])
+```
+
+### Точка в расширении
+
+```
+mcp_1c_debug_set_breakpoints(
+  moduleName="МодульРасширения",
+  moduleType="ObjectModule",
+  extensionName="МоёРасширение",
+  lines=[10]
+)
+```
+
+### Пауза (остановка на следующей выполняемой строке)
+
+```
+mcp_1c_debug_pause()
 ```
 
 ### Ожидание остановки
 
-```typescript
-const stop = await mcp_1c_debug_wait_for_stop({ timeout: 30000 });
+```
+mcp_1c_debug_wait_for_stop(timeout=30000)
+```
+
+### Стек вызовов
+
+```
+mcp_1c_debug_get_call_stack(targetId="...")
 ```
 
 ### Просмотр переменных
 
-```typescript
-const vars = await mcp_1c_debug_get_variables({ 
-  targetId: stop.targetId 
-});
+```
+mcp_1c_debug_get_variables(targetId="...")
 ```
 
 ### Продолжение выполнения
 
-```typescript
-await mcp_1c_debug_continue({ targetId: stop.targetId });
+```
+mcp_1c_debug_continue(targetId="...")
 ```
 
 ### Отключение
 
-```typescript
-await mcp_1c_debug_detach();
+```
+mcp_1c_debug_detach()
 ```
 
-## 7. Отладка внешней обработки
-
-Для внешних обработок точки останова не работают. Используйте:
-
-```typescript
-// 1. Получить цели
-const targets = await mcp_1c_debug_get_targets();
-const client = targets.targets.find(t => t.targetType === "ManagedClient");
-
-// 2. Установить паузу
-await mcp_1c_debug_pause({ targetId: client.targetID.id });
-
-// 3. Выполнить действие в обработке
-
-// 4. Дождаться остановки
-const stop = await mcp_1c_debug_wait_for_stop();
-
-// 5. Пошаговое выполнение
-await mcp_1c_debug_step_in({ targetId: stop.targetId });
-```
-
-## 8. Настройка отладки в своём проекте
-
-Если вы хотите добавить отладку в существующий 1С проект, есть два способа.
-
-### Способ 1 — Автоматически через Kiro Steering
-
-В папке [`examples/kiro-steering/`](examples/kiro-steering/) лежат готовые steering файлы для Kiro:
-
-- `1c-debug-setup.md` — помогает быстро настроить отладку в проекте: задаёт нужные вопросы и создаёт `mcp.json`
-- `1c-debug-mcp.md` — правила работы с инструментами отладки для AI-ассистента
-
-**Установка:**
-
-```bash
-# Глобально (для всех проектов)
-copy examples\kiro-steering\1c-debug-setup.md %USERPROFILE%\.kiro\steering\
-copy examples\kiro-steering\1c-debug-mcp.md %USERPROFILE%\.kiro\steering\
-
-# Или только для текущего проекта
-copy examples\kiro-steering\1c-debug-setup.md .kiro\steering\
-copy examples\kiro-steering\1c-debug-mcp.md .kiro\steering\
-```
-
-После установки в чате Kiro напишите `#1c-debug-setup` и скажите:
+### Принудительное отключение (при зависшей сессии)
 
 ```
-Добавь отладку в этот проект
+mcp_1c_debug_force_detach()
 ```
 
-Kiro спросит параметры (сервер, база, пути к исходникам) и создаст `mcp.json` автоматически.
+## 7. Переменные окружения
 
-### Способ 2 — Вручную
+| Переменная | Описание | Обязательная |
+|---|---|---|
+| `ONEC_DEBUG_URL` | URL сервера отладки | Да |
+| `ONEC_INFOBASE_ALIAS` | Алиас базы | Да |
+| `ONEC_DEBUG_PASSWORD` | Пароль сервера отладки | Нет |
+| `ONEC_CF_PATH` | Путь к конфигурации (для резолвинга) | Нет |
+| `ONEC_CFE_PATHS` | Пути к расширениям (через `;`) | Нет |
+| `ONEC_EPF_PATHS` | Пути к внешним обработкам (через `;`) | Нет |
+| `ONEC_LOG_LEVEL` | Уровень логов: `error`/`info`/`debug` | Нет |
+| `ONEC_LOG_FILE` | Путь к файлу логов (перезапись при старте) | Нет |
 
-Создайте `.kiro/settings/mcp.json` в корне вашего проекта:
-
-```json
-{
-  "mcpServers": {
-    "1c-debug": {
-      "command": "node",
-      "args": ["//C/path/to/1c-debug-mcp/dist/index.js"],
-      "env": {
-        "ONEC_DEBUG_URL": "http://localhost:1550",
-        "ONEC_INFOBASE_ALIAS": "DefAlias",
-        "ONEC_CF_PATH": "C:\\path\\to\\your\\src\\cf",
-        "ONEC_CFE_PATHS": "C:\\path\\to\\your\\src\\cfe",
-        "ONEC_EPF_PATHS": "C:\\path\\to\\your\\src\\epf"
-      },
-      "disabled": false,
-      "autoApprove": []
-    }
-  }
-}
-```
-
-> Все пути должны быть **абсолютными** — `${workspaceFolder}` не работает в mcp.json.
-> В `args` используйте формат `//C/...`, в `env` — обычный Windows формат `C:\\...`.
-
-## 9. Полезные ссылки
-
-- [README.md](README.md) — полная документация
-- [EXAMPLES.md](EXAMPLES.md) — примеры использования
-- [FAQ.md](FAQ.md) — часто задаваемые вопросы
-- [examples/kiro-steering/](examples/kiro-steering/) — готовые steering файлы для Kiro
-
-## Проблемы?
+## 8. Проблемы?
 
 ### Ошибка "ibInDebug"
 
-Закройте отладчик в Конфигураторе.
+Закройте отладчик в Конфигураторе. Или вызовите `force_detach` и `attach` заново.
 
 ### Ошибка "notRegistered"
 
-Проверьте правильность `infobaseAlias` в mcp.json.
+Проверьте правильность `ONEC_INFOBASE_ALIAS`.
 
 ### Точка останова не срабатывает
 
-1. Проверьте что код выполняется
-2. Убедитесь что используете правильный `moduleName` и `moduleType`
-3. Для внешних обработок используйте `pause` вместо точек останова
+1. Убедитесь что код выполняется
+2. Проверьте `moduleName` и `moduleType`
+3. Для расширений укажите `extensionName`
+4. Проверьте что метаданные загружены (`get_targets` → `metadata.ready: true`)
 
 ### Логи
 
-Смотрите логи в `dist/1c-debug.log`:
-
-```bash
-tail -f 1c-debug-mcp/dist/1c-debug.log
+```
+ONEC_LOG_LEVEL=debug
+ONEC_LOG_FILE=C:\Logs\1c-debug.log
 ```
 
 ## Готово!
 
-Теперь вы можете отлаживать 1С приложения через AI-ассистента. 🎉
-
-Для более сложных сценариев см. [EXAMPLES.md](EXAMPLES.md).
+Для более сложных сценариев см. [EXAMPLES.md](EXAMPLES.md) и [README.md](README.md).

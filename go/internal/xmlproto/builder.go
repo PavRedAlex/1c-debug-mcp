@@ -10,6 +10,7 @@ const ns = `http://v8.1c.ru/8.3/debugger/debugRDBGRequestResponse`
 const nsBD = `http://v8.1c.ru/8.3/debugger/debugBaseData`
 const nsBP = `http://v8.1c.ru/8.3/debugger/debugBreakpoints`
 const nsCalc = `http://v8.1c.ru/8.3/debugger/debugCalculations`
+const nsAutoAttach = `http://v8.1c.ru/8.3/debugger/debugAutoAttach`
 const nsXSI = `http://www.w3.org/2001/XMLSchema-instance`
 
 // BuildRequestXML builds a basic XML request with the given body.
@@ -47,9 +48,12 @@ func BuildInitSettingsXML(alias, id string, breakOnNextLine bool) string {
 func BuildAutoAttachXML(alias, id string, targetTypes []string) string {
 	var sb strings.Builder
 	for _, t := range targetTypes {
-		sb.WriteString(fmt.Sprintf(`<targetType>%s</targetType>`, EscapeXML(t)))
+		sb.WriteString(fmt.Sprintf(`<aa:targetType>%s</aa:targetType>`, EscapeXML(t)))
 	}
-	body := fmt.Sprintf(`<autoAttachSettings>%s<areaName></areaName></autoAttachSettings>`, sb.String())
+	body := fmt.Sprintf(
+		`<autoAttachSettings xsi:type="aa:DebugAutoAttachSettings" xmlns:xsi="%s" xmlns:aa="%s">%s<aa:areaName></aa:areaName></autoAttachSettings>`,
+		nsXSI, nsAutoAttach, sb.String(),
+	)
 	return BuildRequestXML(alias, id, body)
 }
 
@@ -118,7 +122,7 @@ func BuildSetBreakpointsXML(alias, id string, bp *BPWorkspace) string {
 		} else {
 			url := obj.ModuleID.URL
 			if url == "" {
-				url = fmt.Sprintf("e1cib/data/%s", obj.ModuleID.Type)
+				url = fmt.Sprintf("e1cib/data/%s.%s", obj.ModuleID.Type, obj.ModuleID.Name)
 			}
 			moduleIdXml = fmt.Sprintf(
 				`<type xmlns="%s">ConfigModule</type>`+
@@ -170,12 +174,19 @@ func BuildStepXML(alias, id string, targetID TargetID, action string) string {
 }
 
 // BuildAttachDetachTargetsXML builds attachDetachDbgTargets request XML.
-func BuildAttachDetachTargetsXML(alias, id string, targetID TargetID, attach bool) string {
+// Sends multiple <id> elements, one per target.
+func BuildAttachDetachTargetsXML(alias, id string, targetIDs []TargetID, attach bool) string {
 	attachVal := "false"
 	if attach {
 		attachVal = "true"
 	}
-	idXml := fmt.Sprintf(`<id xsi:type="bd:DebugTargetIdLight"><bd:id>%s</bd:id></id>`, EscapeXML(targetID.ID))
+	var idsXml strings.Builder
+	for _, tid := range targetIDs {
+		idsXml.WriteString(fmt.Sprintf(
+			`<id xsi:type="bd:DebugTargetIdLight"><bd:id>%s</bd:id></id>`,
+			EscapeXML(tid.ID),
+		))
+	}
 	return fmt.Sprintf(
 		`%s<request xmlns="%s" xmlns:bd="%s" xmlns:xsi="%s">`+
 			`<infoBaseAlias>%s</infoBaseAlias>`+
@@ -187,7 +198,23 @@ func BuildAttachDetachTargetsXML(alias, id string, targetID TargetID, attach boo
 		EscapeXML(alias),
 		EscapeXML(id),
 		attachVal,
-		idXml,
+		idsXml.String(),
+	)
+}
+
+// BuildGetCallStackXML builds getCallStack request XML.
+// TypeScript uses: <id><id xmlns="NS_BD">uuid</id></id>
+func BuildGetCallStackXML(alias, id string, targetID TargetID) string {
+	return fmt.Sprintf(
+		`%s<request xmlns="%s">`+
+			`<infoBaseAlias>%s</infoBaseAlias>`+
+			`<idOfDebuggerUI>%s</idOfDebuggerUI>`+
+			`<id><id xmlns="%s">%s</id></id>`+
+			`</request>`,
+		xmlHeader, ns,
+		EscapeXML(alias),
+		EscapeXML(id),
+		nsBD, EscapeXML(targetID.ID),
 	)
 }
 

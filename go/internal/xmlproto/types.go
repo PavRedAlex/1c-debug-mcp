@@ -38,6 +38,7 @@ type TargetID struct {
 
 type ModuleID struct {
 	Type          string
+	Name          string
 	URL           string
 	ExtensionName string
 	ObjectID      string

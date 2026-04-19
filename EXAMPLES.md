@@ -2,358 +2,223 @@
 
 ## Базовая отладка общего модуля
 
-```typescript
-// 1. Подключение к серверу отладки
-await mcp_1c_debug_attach({
-  url: "http://localhost:1550",
-  infobaseAlias: "DefAlias",
-  autoAttach: true
-});
+```
+// 1. Подключение
+mcp_1c_debug_attach()
 
-// 2. Установка точки останова
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ОбщегоНазначения",
-  moduleType: "CommonModule",
-  lines: [42, 100],
-  objectID: "4eee25b1-2da6-459b-953b-4c8d519c9bce"
-});
+// 2. Установка точки (objectID резолвится автоматически из метаданных)
+mcp_1c_debug_set_breakpoints(
+  moduleName="ОбщегоНазначения",
+  moduleType="CommonModule",
+  lines=[42]
+)
 
-// 3. Выполнить код в 1С, который вызовет процедуру из модуля
+// 3. Выполнить код в 1С
 
-// 4. Дождаться остановки на точке
-const stopEvent = await mcp_1c_debug_wait_for_stop({ timeout: 30000 });
-console.log(`Stopped at ${stopEvent.moduleName}:${stopEvent.lineNo}`);
+// 4. Дождаться остановки
+stop = mcp_1c_debug_wait_for_stop(timeout=30000)
+// → { targetId, moduleName, lineNo, callStack }
 
-// 5. Просмотр локальных переменных
-const vars = await mcp_1c_debug_get_variables({ 
-  targetId: stopEvent.targetId 
-});
-console.log("Variables:", vars.variables);
+// 5. Просмотр переменных
+mcp_1c_debug_get_variables(targetId=stop.targetId)
+// → { variables: [{ name, typeName, value }] }
 
 // 6. Вычисление выражения
-const result = await mcp_1c_debug_evaluate({
-  targetId: stopEvent.targetId,
-  expression: "ТекущаяДата()"
-});
-console.log("Current date:", result.result.value);
+mcp_1c_debug_evaluate(targetId=stop.targetId, expression="ТекущаяДата()")
+// → { result: { typeName: "Дата", value: "19.04.2026 16:00:00" } }
 
-// 7. Продолжить выполнение
-await mcp_1c_debug_continue({ targetId: stopEvent.targetId });
-
-// 8. Отключение
-await mcp_1c_debug_detach();
-```
-
-## Отладка внешней обработки (EPF)
-
-Точки останова для внешних обработок не работают. Используйте breakOnNextLine:
-
-```typescript
-// 1. Подключение
-await mcp_1c_debug_attach();
-
-// 2. Получить список целей отладки
-const targets = await mcp_1c_debug_get_targets();
-const clientTarget = targets.targets.find(t => t.targetType === "ManagedClient");
-
-// 3. Установить паузу на следующей строке
-await mcp_1c_debug_pause({ targetId: clientTarget.targetID.id });
-
-// 4. Выполнить действие в обработке (например, нажать кнопку)
-// Пользователь выполняет действие в UI
-
-// 5. Дождаться остановки
-const stop = await mcp_1c_debug_wait_for_stop({ timeout: 30000 });
-console.log(`Stopped at ${stop.moduleName}:${stop.lineNo}`);
-console.log("Call stack:", stop.callStack);
-
-// 6. Пошаговое выполнение
-await mcp_1c_debug_step_in({ targetId: stop.targetId });
-
-// Дождаться следующей остановки
-const stop2 = await mcp_1c_debug_wait_for_stop({ timeout: 5000 });
-console.log(`Now at ${stop2.moduleName}:${stop2.lineNo}`);
-
-// 7. Выход из процедуры
-await mcp_1c_debug_step_out({ targetId: stop2.targetId });
-
-// 8. Продолжить выполнение
-await mcp_1c_debug_continue({ targetId: stop2.targetId });
-```
-
-## Отладка серверной процедуры
-
-```typescript
-// 1. Подключение
-await mcp_1c_debug_attach();
-
-// 2. Получить цели отладки
-const targets = await mcp_1c_debug_get_targets();
-console.log("Available targets:", targets.targets.map(t => ({
-  id: t.targetID.id,
-  type: t.targetType,
-  suspended: t.suspended
-})));
-
-// 3. Найти серверную цель
-const serverTarget = targets.targets.find(t => t.targetType === "ServerEmulation");
-
-// 4. Установить точку в серверной процедуре
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "МодульМенеджераДокумента",
-  moduleType: "ManagerModule",
-  lines: [25],
-  objectID: "document-manager-object-id",
-  targetId: serverTarget.targetID.id
-});
-
-// 5. Выполнить серверный код в 1С
-
-// 6. Дождаться остановки
-const stop = await mcp_1c_debug_wait_for_stop({ timeout: 30000 });
-
-// 7. Просмотр переменных
-const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
+// 7. Стек вызовов
+mcp_1c_debug_get_call_stack(targetId=stop.targetId)
 
 // 8. Продолжить
-await mcp_1c_debug_continue({ targetId: stop.targetId });
+mcp_1c_debug_continue(targetId=stop.targetId)
+
+// 9. Отключение
+mcp_1c_debug_detach()
+```
+
+## Отладка модуля объекта документа
+
+```
+mcp_1c_debug_attach()
+
+// objectID резолвится автоматически по имени из метаданных
+mcp_1c_debug_set_breakpoints(
+  moduleName="_ДемоЗаказПокупателя",
+  moduleType="ObjectModule",
+  lines=[77]
+)
+
+// Записать документ в 1С
+
+stop = mcp_1c_debug_wait_for_stop()
+// → moduleName: "Document._ДемоЗаказПокупателя"
+
+mcp_1c_debug_get_variables(targetId=stop.targetId)
+// → [{ name: "Отказ", typeName: "Булево", value: "Ложь" }]
+
+mcp_1c_debug_continue(targetId=stop.targetId)
+```
+
+## Отладка формы документа
+
+```
+mcp_1c_debug_attach()
+
+// UUID формы из src/cf/Documents/_ДемоЗаказПокупателя/Forms/ФормаДокумента.xml
+mcp_1c_debug_set_breakpoints(
+  moduleName="_ДемоЗаказПокупателя",
+  moduleType="FormModule",
+  objectID="4dd0d3d6-6edd-4571-a181-6320b2cf459a",
+  lines=[15]
+)
+
+// Открыть новый документ в 1С
+
+stop = mcp_1c_debug_wait_for_stop()
+// → moduleName: "Document._ДемоЗаказПокупателя/Form/ФормаДокумента"
+
+mcp_1c_debug_continue(targetId=stop.targetId)
 ```
 
 ## Отладка расширения
 
-```typescript
-// Убедитесь что ONEC_CFE_PATHS настроен в mcp.json
+```
+mcp_1c_debug_attach()
 
-// 1. Подключение
-await mcp_1c_debug_attach();
+// extensionName указывает что искать в расширении, не в основной конфигурации
+mcp_1c_debug_set_breakpoints(
+  moduleName="_ДемоЗаказПокупателя",
+  moduleType="ObjectModule",
+  extensionName="_ДемоПустоеРасширение",
+  lines=[4]
+)
 
-// 2. Установить точку в модуле расширения
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "МодульРасширения",
-  moduleType: "CommonModule",
-  lines: [10, 20],
-  objectID: "extension-module-object-id"
-});
+// Записать документ в 1С
 
-// 3. Выполнить код расширения в 1С
+stop = mcp_1c_debug_wait_for_stop()
+// → moduleName: "_ДемоПустоеРасширение:Document._ДемоЗаказПокупателя"
 
-// 4. Дождаться остановки
-const stop = await mcp_1c_debug_wait_for_stop();
-console.log(`Stopped in extension: ${stop.moduleName}:${stop.lineNo}`);
+mcp_1c_debug_continue(targetId=stop.targetId)
+```
 
-// 5. Отладка
-const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-await mcp_1c_debug_continue({ targetId: stop.targetId });
+## Пауза и пошаговое выполнение
+
+```
+mcp_1c_debug_attach()
+
+// Установить паузу — остановится на следующей выполняемой строке любой цели
+mcp_1c_debug_pause()
+
+// Выполнить любое действие в 1С (нажать кнопку, открыть форму)
+
+stop = mcp_1c_debug_wait_for_stop(timeout=30000)
+// → остановился где-то в коде
+
+// Шаг с заходом в процедуру
+mcp_1c_debug_step_in(targetId=stop.targetId)
+stop2 = mcp_1c_debug_wait_for_stop()
+
+// Посмотреть переменные
+mcp_1c_debug_get_variables(targetId=stop2.targetId)
+
+// Выйти из процедуры
+mcp_1c_debug_step_out(targetId=stop2.targetId)
+stop3 = mcp_1c_debug_wait_for_stop()
+
+// Продолжить
+mcp_1c_debug_continue(targetId=stop3.targetId)
+```
+
+## Отладка серверной процедуры
+
+```
+mcp_1c_debug_attach()
+
+// Точки работают для ServerEmulation и Server без дополнительных настроек
+mcp_1c_debug_set_breakpoints(
+  moduleName="_ДемоЗаказПокупателя",
+  moduleType="ObjectModule",
+  lines=[77]
+)
+
+// Записать документ — ПриЗаписи выполняется на сервере
+
+stop = mcp_1c_debug_wait_for_stop()
+// targetType цели будет "ServerEmulation"
+
+mcp_1c_debug_evaluate(targetId=stop.targetId, expression="Ссылка")
+// → { typeName: "ДокументСсылка._ДемоЗаказПокупателя", value: "..." }
+
+mcp_1c_debug_continue(targetId=stop.targetId)
 ```
 
 ## Подключение к удалённому серверу
 
-Для подключения к удалённому серверу отладки укажите его URL в настройках или при вызове `attach`:
-
-```typescript
-// Подключение к удалённому серверу
-await mcp_1c_debug_attach({
-  url: "http://192.168.1.100:1550",
-  infobaseAlias: "DefAlias",
-  password: "debug-password",  // Если требуется
-  autoAttach: true
-});
-
-// Дальнейшая работа идентична локальной отладке
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ОбщегоНазначения",
-  moduleType: "CommonModule",
-  lines: [42]
-});
-
-const stop = await mcp_1c_debug_wait_for_stop();
-const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-await mcp_1c_debug_continue({ targetId: stop.targetId });
-```
-
-## Условная отладка с вычислением выражений
-
-```typescript
-// 1. Подключение и установка точки
-await mcp_1c_debug_attach();
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ОбщегоНазначения",
-  moduleType: "CommonModule",
-  lines: [42]
-});
-
-// 2. Дождаться остановки
-const stop = await mcp_1c_debug_wait_for_stop();
-
-// 3. Проверить условие через evaluate
-const condition = await mcp_1c_debug_evaluate({
-  targetId: stop.targetId,
-  expression: "Параметр1 = \"НужноеЗначение\""
-});
-
-if (condition.result.value === "Истина") {
-  // Условие выполнено — продолжаем отладку
-  const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-  console.log("Variables:", vars);
-  
-  // Вычислить сложное выражение
-  const result = await mcp_1c_debug_evaluate({
-    targetId: stop.targetId,
-    expression: "СтрДлина(Параметр1) + СтрДлина(Параметр2)"
-  });
-  console.log("Total length:", result.result.value);
-} else {
-  // Условие не выполнено — продолжаем выполнение
-  await mcp_1c_debug_continue({ targetId: stop.targetId });
+```json
+// mcp.json
+{
+  "env": {
+    "ONEC_DEBUG_URL": "http://192.168.1.100:1550",
+    "ONEC_INFOBASE_ALIAS": "production_base",
+    "ONEC_DEBUG_PASSWORD": "secret"
+  }
 }
 ```
 
-## Множественные точки останова
+Работа идентична локальной отладке.
 
-```typescript
-// 1. Подключение
-await mcp_1c_debug_attach();
+## Восстановление после сбоя dbgs.exe
 
-// 2. Установить точки в нескольких модулях
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ОбщегоНазначения",
-  moduleType: "CommonModule",
-  lines: [42, 100, 150]
-});
+```
+// Если dbgs.exe перезапустился — ping-цикл автоматически переподключится
+// Если сессия зависла:
 
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "РаботаСФайлами",
-  moduleType: "CommonModule",
-  lines: [25, 50]
-});
-
-// 3. Выполнить код в 1С
-
-// 4. Обработка остановок в цикле
-for (let i = 0; i < 5; i++) {
-  const stop = await mcp_1c_debug_wait_for_stop({ timeout: 60000 });
-  console.log(`Stop ${i + 1}: ${stop.moduleName}:${stop.lineNo}`);
-  
-  // Просмотр переменных на каждой остановке
-  const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-  console.log(`Variables at stop ${i + 1}:`, vars.variables.length);
-  
-  // Продолжить выполнение
-  await mcp_1c_debug_continue({ targetId: stop.targetId });
-}
-
-// 5. Очистить все точки
-await mcp_1c_debug_clear_breakpoints();
+mcp_1c_debug_force_detach()  // принудительно очистить сессию
+mcp_1c_debug_attach()        // подключиться заново
+mcp_1c_debug_set_breakpoints(...)  // переустановить точки
 ```
 
-## Отладка с использованием raw_request
+## Диагностика протокола через raw_request
 
-Для отладки протокола или нестандартных операций:
-
-```typescript
-// Отправка произвольного XML запроса
-const response = await mcp_1c_debug_raw_request({
-  cmd: "getCallStack",
-  dbgui: "your-debug-ui-id",
-  xml: `<?xml version="1.0" encoding="UTF-8"?>
+```
+// Проверить что точки установлены
+mcp_1c_debug_raw_request(
+  cmd="getBreakpoints",
+  xml='<?xml version="1.0" encoding="UTF-8"?>
 <request xmlns="http://v8.1c.ru/8.3/debugger/debugRDBGRequestResponse">
   <infoBaseAlias>DefAlias</infoBaseAlias>
-  <idOfDebuggerUI>your-debug-ui-id</idOfDebuggerUI>
-  <id>
-    <id>target-id</id>
-  </id>
-</request>`
-});
+  <idOfDebuggerUI>SESSION-UUID</idOfDebuggerUI>
+</request>'
+)
 
-console.log("Response status:", response.status);
-console.log("Response body:", response.body);
+// Проверить ping
+mcp_1c_debug_raw_request(
+  cmd="pingDebugUIParams",
+  dbgui="SESSION-UUID",
+  xml=" "
+)
 ```
 
-## Обработка ошибок
+## Перезагрузка метаданных
 
-```typescript
-try {
-  await mcp_1c_debug_attach({
-    url: "http://localhost:1550",
-    infobaseAlias: "DefAlias"
-  });
-} catch (error) {
-  if (error.message.includes("ibInDebug")) {
-    console.error("Another debugger is connected. Close Configurator debugger.");
-  } else if (error.message.includes("notRegistered")) {
-    console.error("Invalid infobase alias or credentials.");
-  } else {
-    console.error("Connection failed:", error.message);
-  }
-  process.exit(1);
-}
+После обновления исходников конфигурации:
 
-try {
-  const stop = await mcp_1c_debug_wait_for_stop({ timeout: 30000 });
-  // ... отладка
-} catch (error) {
-  if (error.name === "TimeoutError") {
-    console.error("Timeout waiting for stop event");
-  } else {
-    console.error("Wait failed:", error.message);
+```
+mcp_1c_debug_reload_metadata()
+// → { success: true, moduleCount: 1975 }
+```
+
+## Включение подробных логов
+
+```json
+// mcp.json
+{
+  "env": {
+    "ONEC_LOG_LEVEL": "debug",
+    "ONEC_LOG_FILE": "C:\\Logs\\1c-debug.log"
   }
 }
 ```
 
-## Автоматизация отладки
-
-```typescript
-async function debugWorkflow() {
-  // 1. Подключение
-  await mcp_1c_debug_attach();
-  
-  // 2. Установка точек
-  await mcp_1c_debug_set_breakpoints({
-    moduleName: "ОбщегоНазначения",
-    moduleType: "CommonModule",
-    lines: [42]
-  });
-  
-  // 3. Ожидание остановки
-  const stop = await mcp_1c_debug_wait_for_stop({ timeout: 60000 });
-  
-  // 4. Автоматический сбор информации
-  const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-  const stackDepth = stop.callStack.length;
-  
-  // 5. Логирование
-  console.log("=== Debug Info ===");
-  console.log(`Module: ${stop.moduleName}`);
-  console.log(`Line: ${stop.lineNo}`);
-  console.log(`Stack depth: ${stackDepth}`);
-  console.log(`Variables count: ${vars.variables.length}`);
-  
-  // 6. Вычисление ключевых выражений
-  const expressions = [
-    "ТекущаяДата()",
-    "ПараметрыСеанса.ТекущийПользователь",
-    "ТипЗнч(Параметр1)"
-  ];
-  
-  for (const expr of expressions) {
-    try {
-      const result = await mcp_1c_debug_evaluate({
-        targetId: stop.targetId,
-        expression: expr
-      });
-      console.log(`${expr} = ${result.result.value}`);
-    } catch (error) {
-      console.log(`${expr} = ERROR: ${error.message}`);
-    }
-  }
-  
-  // 7. Продолжение
-  await mcp_1c_debug_continue({ targetId: stop.targetId });
-  
-  // 8. Отключение
-  await mcp_1c_debug_detach();
-}
-
-// Запуск
-debugWorkflow().catch(console.error);
-```
+Лог перезаписывается при каждом перезапуске MCP-сервера.

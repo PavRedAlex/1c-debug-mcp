@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/1c-debug-mcp/go/internal/logger"
 )
 
 // mdFolders maps configuration folder names to module type prefixes.
@@ -61,12 +63,12 @@ func (p *Provider) Load(cfPath string, cfePaths, epfPaths []string) {
 
 	go func() {
 		if err := p.doLoad(cfPath, cfePaths, epfPaths); err != nil {
-			fmt.Fprintf(os.Stderr, "[MetadataProvider] Load error: %v\n", err)
+			logger.Error("metadata: load error: %v", err)
 		}
 		p.mu.Lock()
 		p.ready = true
 		p.mu.Unlock()
-		fmt.Fprintf(os.Stderr, "[MetadataProvider] Loaded and ready (%d modules)\n", p.ModuleCount())
+		logger.Info("metadata: loaded and ready (%d modules)", p.ModuleCount())
 	}()
 }
 
@@ -123,11 +125,25 @@ func (p *Provider) ResolveExtension(objectID string) string {
 
 // ResolveObjectID finds the objectID for a given module name.
 // Accepts full label like "CommonModule.ОбщегоНазначения" or short name "ОбщегоНазначения".
-func (p *Provider) ResolveObjectID(moduleName string) (string, bool) {
+// If extensionName is empty — searches only in the main configuration (no ":" in label).
+// If extensionName is non-empty — searches only in that specific extension.
+func (p *Provider) ResolveObjectID(moduleName, extensionName string) (string, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	lower := strings.ToLower(moduleName)
 	for uuid, label := range p.objectIDToName {
+		if extensionName == "" {
+			// Main configuration only — skip extension entries
+			if strings.Contains(label, ":") {
+				continue
+			}
+		} else {
+			// Specific extension only — must start with "ExtName:"
+			prefix := strings.ToLower(extensionName) + ":"
+			if !strings.HasPrefix(strings.ToLower(label), prefix) {
+				continue
+			}
+		}
 		if strings.ToLower(label) == lower {
 			return uuid, true
 		}
@@ -146,11 +162,11 @@ func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string) error {
 		if _, err := os.Stat(cfPath); err == nil {
 			before := p.ModuleCount()
 			if err := p.scanCF(cfPath, ""); err != nil {
-				fmt.Fprintf(os.Stderr, "[MetadataProvider] Error scanning cf: %v\n", err)
+				logger.Error("metadata: error scanning cf: %v", err)
 			}
-			fmt.Fprintf(os.Stderr, "[MetadataProvider] Loaded %d modules from %s\n", p.ModuleCount()-before, cfPath)
+			logger.Info("metadata: loaded %d modules from %s", p.ModuleCount()-before, cfPath)
 		} else {
-			fmt.Fprintf(os.Stderr, "[MetadataProvider] cfPath not found: %s\n", cfPath)
+			logger.Error("metadata: cfPath not found: %s", cfPath)
 		}
 	}
 
@@ -159,7 +175,7 @@ func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string) error {
 			continue
 		}
 		if _, err := os.Stat(cfePath); err != nil {
-			fmt.Fprintf(os.Stderr, "[MetadataProvider] cfePath not found: %s\n", cfePath)
+			logger.Error("metadata: cfePath not found: %s", cfePath)
 			continue
 		}
 		// Check if it's a single extension or a directory of extensions
@@ -172,9 +188,9 @@ func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string) error {
 			}
 			before := p.ModuleCount()
 			if err := p.scanCF(cfePath, extName); err != nil {
-				fmt.Fprintf(os.Stderr, "[MetadataProvider] Error scanning extension %s: %v\n", extName, err)
+				logger.Error("metadata: error scanning extension %s: %v", extName, err)
 			}
-			fmt.Fprintf(os.Stderr, "[MetadataProvider] Loaded %d modules from extension %s (%s)\n", p.ModuleCount()-before, extName, cfePath)
+			logger.Info("metadata: loaded %d modules from extension %s (%s)", p.ModuleCount()-before, extName, cfePath)
 		} else {
 			// Directory containing multiple extensions
 			entries, err := os.ReadDir(cfePath)
@@ -195,9 +211,9 @@ func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string) error {
 				}
 				before := p.ModuleCount()
 				if err := p.scanCF(extDir, extName); err != nil {
-					fmt.Fprintf(os.Stderr, "[MetadataProvider] Error scanning extension %s: %v\n", extName, err)
+					logger.Error("metadata: error scanning extension %s: %v", extName, err)
 				}
-				fmt.Fprintf(os.Stderr, "[MetadataProvider] Loaded %d modules from extension %s (%s)\n", p.ModuleCount()-before, extName, extDir)
+				logger.Info("metadata: loaded %d modules from extension %s (%s)", p.ModuleCount()-before, extName, extDir)
 			}
 		}
 	}
@@ -207,14 +223,14 @@ func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string) error {
 			continue
 		}
 		if _, err := os.Stat(epfPath); err != nil {
-			fmt.Fprintf(os.Stderr, "[MetadataProvider] epfPath not found: %s\n", epfPath)
+			logger.Error("metadata: epfPath not found: %s", epfPath)
 			continue
 		}
 		before := p.ModuleCount()
 		if err := p.scanEPF(epfPath); err != nil {
-			fmt.Fprintf(os.Stderr, "[MetadataProvider] Error scanning epf: %v\n", err)
+			logger.Error("metadata: error scanning epf: %v", err)
 		}
-		fmt.Fprintf(os.Stderr, "[MetadataProvider] Loaded %d modules from EPF path %s\n", p.ModuleCount()-before, epfPath)
+		logger.Info("metadata: loaded %d modules from EPF path %s", p.ModuleCount()-before, epfPath)
 	}
 
 	return nil

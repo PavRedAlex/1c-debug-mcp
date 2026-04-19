@@ -9,6 +9,7 @@ import (
 
 	"github.com/1c-debug-mcp/go/internal/client"
 	"github.com/1c-debug-mcp/go/internal/events"
+	"github.com/1c-debug-mcp/go/internal/logger"
 	"github.com/1c-debug-mcp/go/internal/metadata"
 	"github.com/1c-debug-mcp/go/internal/ping"
 	"github.com/1c-debug-mcp/go/internal/session"
@@ -100,6 +101,11 @@ func HandleAttach(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
 		return errResult("url and infobaseAlias are required. Set ONEC_DEBUG_URL and ONEC_INFOBASE_ALIAS in mcp.json env section, or pass them explicitly.")
 	}
 
+	// If ping loop is currently reconnecting — wait a bit
+	if deps.Ping.IsReattaching() {
+		return errResult("Debug session is reconnecting, please retry in a few seconds.")
+	}
+
 	if err := deps.Client.Test(url); err != nil {
 		return errResult(fmt.Sprintf("Debug server unreachable: %v", err))
 	}
@@ -114,15 +120,17 @@ func HandleAttach(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
 	_ = deps.Client.InitSettings(s, false)
 
 	if autoAttach {
-		_ = deps.Client.SetAutoAttach(s, []string{"Client", "Server", "ServerEmulation", "BackgroundJob"})
+		_ = deps.Client.SetAutoAttach(s, []string{"Client", "ManagedClient", "Server", "ServerEmulation", "JOB"})
 	}
 
-	// Attach existing targets
+	// Attach existing targets — all at once in one request
 	targets, err := deps.Client.GetTargets(s)
-	if err == nil {
+	if err == nil && len(targets) > 0 {
+		var tids []xmlproto.TargetID
 		for _, t := range targets {
-			_ = deps.Client.AttachDetachTargets(s, t.TargetID, true)
+			tids = append(tids, t.TargetID)
 		}
+		_ = deps.Client.AttachDetachTargets(s, tids, true)
 	}
 
 	deps.Ping.Start(s, deps.Client, deps.Queue)
@@ -145,6 +153,22 @@ func HandleDetach(deps *Deps, _ map[string]interface{}) *mcp.CallToolResult {
 	_ = deps.Client.Detach(s)
 	deps.Session.Clear()
 
+	return toolResult(map[string]bool{"success": true})
+}
+
+// HandleForceDetach forcefully stops ping loop, detaches all sessions and clears state.
+// Use when session is stuck or ibInDebug error occurs.
+func HandleForceDetach(deps *Deps, _ map[string]interface{}) *mcp.CallToolResult {
+	// Stop ping loop first
+	deps.Ping.Stop()
+
+	// Try to detach current session
+	if s := deps.Session.Get(); s != nil {
+		_ = deps.Client.Detach(s)
+	}
+	deps.Session.Clear()
+
+	logger.Info("force_detach: session cleared")
 	return toolResult(map[string]bool{"success": true})
 }
 
@@ -213,6 +237,7 @@ func HandleSetBreakpoints(deps *Deps, args map[string]interface{}) *mcp.CallTool
 		moduleType = "CommonModule"
 	}
 	objectID := strArg(args, "objectID")
+	extensionName := strArg(args, "extensionName")
 	targetIDStr := strArg(args, "targetId")
 
 	// Parse lines
@@ -236,10 +261,10 @@ func HandleSetBreakpoints(deps *Deps, args map[string]interface{}) *mcp.CallTool
 		if prefix == "" {
 			prefix = moduleType
 		}
-		if id, ok := deps.Metadata.ResolveObjectID(prefix + "." + moduleName); ok {
+		if id, ok := deps.Metadata.ResolveObjectID(prefix+"."+moduleName, extensionName); ok {
 			objectID = id
-			fmt.Fprintf(nil, "[breakpoints] Auto-resolved objectID for %s: %s\n", moduleName, objectID)
-		} else if id, ok := deps.Metadata.ResolveObjectID(moduleName); ok {
+			logger.Debug("breakpoints: auto-resolved objectID for %s: %s", moduleName, objectID)
+		} else if id, ok := deps.Metadata.ResolveObjectID(moduleName, extensionName); ok {
 			objectID = id
 		}
 	}
@@ -264,6 +289,7 @@ func HandleSetBreakpoints(deps *Deps, args map[string]interface{}) *mcp.CallTool
 			{
 				ModuleID: xmlproto.ModuleID{
 					Type:          moduleTypeStr,
+					Name:          moduleName,
 					URL:           moduleURL,
 					ObjectID:      objectID,
 					PropertyID:    propertyID,
@@ -309,22 +335,36 @@ func HandleClearBreakpoints(deps *Deps, _ map[string]interface{}) *mcp.CallToolR
 
 // HandleContinue continues execution of a stopped debug target.
 func HandleContinue(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
-	return handleStep(deps, args, "continue")
+	return handleStep(deps, args, "Continue")
 }
 
 // HandleStepIn steps into the next statement.
 func HandleStepIn(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
-	return handleStep(deps, args, "stepIn")
+	return handleStep(deps, args, "StepIn")
 }
 
 // HandleStepOut steps out of the current procedure.
 func HandleStepOut(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
-	return handleStep(deps, args, "stepOut")
+	return handleStep(deps, args, "StepOut")
 }
 
 // HandlePause pauses execution on the next statement.
+// Uses initSettings(breakOnNextLine=true) — stops on the next executed BSL line.
 func HandlePause(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
-	return handleStep(deps, args, "breakOnNextStatement")
+	s, err := deps.Session.Require()
+	if err != nil {
+		return errResult(err.Error())
+	}
+
+	// Clear pending stop events so wait_for_stop won't return stale data
+	deps.Queue.ClearPendingStop()
+
+	// breakOnNextLine=true stops on the next executed line in any target
+	if err := deps.Client.InitSettings(s, true); err != nil {
+		return errResult(fmt.Sprintf("Pause failed: %v", err))
+	}
+
+	return toolResult(map[string]bool{"success": true})
 }
 
 func handleStep(deps *Deps, args map[string]interface{}, action string) *mcp.CallToolResult {
@@ -360,6 +400,11 @@ func HandleWaitForStop(deps *Deps, args map[string]interface{}) *mcp.CallToolRes
 	stopEvent, err := deps.Queue.WaitForStop(ctx)
 	if err != nil {
 		return errResult(fmt.Sprintf("Timeout: %v", err))
+	}
+
+	// Reset breakOnNextLine after stop — so next execution doesn't stop on every line
+	if s, serr := deps.Session.Require(); serr == nil {
+		_ = deps.Client.InitSettings(s, false)
 	}
 
 	// Resolve module name from callStack
@@ -436,7 +481,7 @@ func HandleGetVariables(deps *Deps, args map[string]interface{}) *mcp.CallToolRe
 	var variables []varJSON
 	for _, r := range results {
 		variables = append(variables, varJSON{
-			Name:     r.TypeName, // EvalResult from local vars has name in TypeName field
+			Name:     r.Name,
 			TypeName: r.TypeName,
 			Value:    r.Value,
 		})
@@ -507,7 +552,55 @@ func HandleRawRequest(deps *Deps, args map[string]interface{}) *mcp.CallToolResu
 	})
 }
 
-// HandleReloadMetadata reloads metadata from source files.
+// HandleGetCallStack returns the call stack from the last stop event.
+func HandleGetCallStack(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
+	_, err := deps.Session.Require()
+	if err != nil {
+		return errResult(err.Error())
+	}
+
+	targetIDStr := strArg(args, "targetId")
+
+	lastStop := deps.Queue.GetLastCallStack()
+	if lastStop == nil || (targetIDStr != "" && lastStop.TargetID != targetIDStr) {
+		return toolResult(map[string]interface{}{
+			"callStack": []interface{}{},
+			"note":      "No call stack available — target not stopped or targetId mismatch",
+		})
+	}
+
+	type frameJSON struct {
+		ModuleID interface{} `json:"moduleID"`
+		LineNo   int         `json:"lineNo"`
+	}
+	var callStack []frameJSON
+	for _, f := range lastStop.CallStack {
+		name := f.ModuleID.Type
+		if f.ModuleID.ObjectID != "" {
+			if n, ok := deps.Metadata.ResolveName(f.ModuleID.ObjectID); ok {
+				name = n
+			}
+		}
+		callStack = append(callStack, frameJSON{
+			ModuleID: map[string]string{
+				"type":          f.ModuleID.Type,
+				"name":          name,
+				"url":           f.ModuleID.URL,
+				"objectID":      f.ModuleID.ObjectID,
+				"propertyID":    f.ModuleID.PropertyID,
+				"extensionName": f.ModuleID.ExtensionName,
+			},
+			LineNo: f.LineNo,
+		})
+	}
+
+	return toolResult(map[string]interface{}{
+		"targetId":   lastStop.TargetID,
+		"moduleName": lastStop.ModuleName,
+		"lineNo":     lastStop.LineNo,
+		"callStack":  callStack,
+	})
+}
 func HandleReloadMetadata(deps *Deps, _ map[string]interface{}) *mcp.CallToolResult {
 	count, err := deps.Metadata.Reload()
 	if err != nil {
