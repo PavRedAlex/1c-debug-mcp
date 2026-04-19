@@ -6,19 +6,21 @@ inclusion: manual
 ## Назначение
 
 Правила работы с MCP сервером для отладки 1С:Предприятие через HTTP Debug Protocol.
+Реализован на Go — единый бинарник без зависимостей.
 
 ## Доступные инструменты
 
-MCP сервер `1c-debug` предоставляет 13 инструментов для отладки:
+MCP сервер `1c-debug` предоставляет 15 инструментов:
 
 ### Управление сессией
 
 - `mcp_1c_debug_attach` — подключение к серверу отладки
 - `mcp_1c_debug_detach` — отключение от сервера
+- `mcp_1c_debug_force_detach` — принудительное отключение (при зависшей сессии / ibInDebug)
 
 ### Управление целями
 
-- `mcp_1c_debug_get_targets` — список целей отладки (процессов 1С)
+- `mcp_1c_debug_get_targets` — список целей отладки (процессов 1С) + статус метаданных
 
 ### Точки останова
 
@@ -30,230 +32,231 @@ MCP сервер `1c-debug` предоставляет 13 инструменто
 - `mcp_1c_debug_continue` — продолжить выполнение
 - `mcp_1c_debug_step_in` — шаг с заходом в процедуры
 - `mcp_1c_debug_step_out` — выход из процедуры
-- `mcp_1c_debug_pause` — пауза на следующей строке (breakOnNextLine)
+- `mcp_1c_debug_pause` — пауза на следующей строке (глобальная, без targetId)
 
 ### Инспекция
 
 - `mcp_1c_debug_wait_for_stop` — ожидание остановки
+- `mcp_1c_debug_get_call_stack` — стек вызовов (из последнего события)
 - `mcp_1c_debug_get_variables` — получение локальных переменных
 - `mcp_1c_debug_evaluate` — вычисление BSL выражения
 
-### Отладка протокола
+### Служебные
 
 - `mcp_1c_debug_raw_request` — отправка произвольного XML запроса
-
-### Метаданные
-
-- `mcp_1c_debug_reload_metadata` — перезагрузка метаданных из исходников без перезапуска сервера
+- `mcp_1c_debug_reload_metadata` — перезагрузка метаданных без перезапуска сервера
 
 ## Правила работы
 
 ### 1. Всегда начинай с подключения
 
-```typescript
-await mcp_1c_debug_attach();
+```
+mcp_1c_debug_attach()
 ```
 
 Если нужны специфичные параметры:
 
-```typescript
-await mcp_1c_debug_attach({
-  url: "http://192.168.1.100:1550",  // Для удалённого сервера
-  infobaseAlias: "production_base",   // Для серверной базы
-  password: "debug-password"          // Если требуется
-});
+```
+mcp_1c_debug_attach(
+  url="http://192.168.1.100:1550",
+  infobaseAlias="production_base",
+  password="debug-password"
+)
 ```
 
 ### 2. Установка точек останова
 
-Для модулей конфигурации (работает):
+Для основной конфигурации (objectID резолвится автоматически):
 
-```typescript
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ОбщегоНазначения",
-  moduleType: "CommonModule",
-  lines: [42, 100],
-  objectID: "4eee25b1-2da6-459b-953b-4c8d519c9bce"  // Опционально, если отсутствует резолвится автоматически из метаданных
-});
+```
+mcp_1c_debug_set_breakpoints(
+  moduleName="ОбщегоНазначения",
+  moduleType="CommonModule",
+  lines=[42]
+)
+```
+
+Для расширения (обязательно указывай extensionName):
+
+```
+mcp_1c_debug_set_breakpoints(
+  moduleName="_ДемоЗаказПокупателя",
+  moduleType="ObjectModule",
+  extensionName="_МоёРасширение",
+  lines=[10]
+)
 ```
 
 Типы модулей:
 
 - `CommonModule` — общий модуль
 - `ObjectModule` — модуль объекта (документа, справочника)
-- `FormModule` — модуль формы
+- `FormModule` — модуль формы (нужен objectID из XML формы)
 - `ManagerModule` — модуль менеджера
 - `RecordSetModule` — модуль набора записей
 
-⚠️ Для внешних обработок (EPF) точки НЕ работают! Используй `pause` вместо точек останова:
+### 3. Пауза
 
-```typescript
-const targets = await mcp_1c_debug_get_targets();
-const client = targets.targets.find(t => t.targetType === "ManagedClient");
-await mcp_1c_debug_pause({ targetId: client.targetID.id });
-// Пользователь выполняет действие в обработке
-const stop = await mcp_1c_debug_wait_for_stop();
-await mcp_1c_debug_step_in({ targetId: stop.targetId });
+`pause` останавливает на следующей выполняемой строке **любой** цели — не нужен targetId:
+
+```
+mcp_1c_debug_pause()
+// выполни действие в 1С
+stop = mcp_1c_debug_wait_for_stop()
 ```
 
-### 3. Ожидание остановки
+После остановки `breakOnNextLine` сбрасывается автоматически.
 
-После установки точки или step команды всегда вызывай `wait_for_stop`:
+### 4. Ожидание остановки
 
-```typescript
-const stop = await mcp_1c_debug_wait_for_stop({ timeout: 30000 });
+После установки точки или step команды вызывай `wait_for_stop`:
+
+```
+stop = mcp_1c_debug_wait_for_stop(timeout=30000)
 // stop.targetId, stop.moduleName, stop.lineNo, stop.callStack
 ```
 
-### 4. Просмотр переменных
+### 5. Стек вызовов
 
-```typescript
-const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-// vars.variables[].name, .typeName, .value, .expandable
+```
+mcp_1c_debug_get_call_stack(targetId=stop.targetId)
+// Возвращает последний стек — не потребляет очередь событий
 ```
 
-### 5. Вычисление выражений
+### 6. Просмотр переменных
 
-```typescript
-const result = await mcp_1c_debug_evaluate({
-  targetId: stop.targetId,
-  expression: "ТекущаяДата()"
-});
-// result.result.typeName, result.result.value
+```
+mcp_1c_debug_get_variables(targetId=stop.targetId)
+// → { variables: [{ name, typeName, value }] }
 ```
 
-### 6. Продолжение выполнения
+### 7. Вычисление выражений
 
-```typescript
-await mcp_1c_debug_continue({ targetId: stop.targetId });  // до следующей точки
-await mcp_1c_debug_step_in({ targetId: stop.targetId });   // шаг с заходом
-await mcp_1c_debug_step_out({ targetId: stop.targetId });  // выход из процедуры
+```
+mcp_1c_debug_evaluate(targetId=stop.targetId, expression="ТекущаяДата()")
+// → { result: { typeName, value } }
 ```
 
-### 7. Отключение
+### 8. Продолжение выполнения
 
-```typescript
-await mcp_1c_debug_detach();
+```
+mcp_1c_debug_continue(targetId=stop.targetId)   // до следующей точки
+mcp_1c_debug_step_in(targetId=stop.targetId)    // шаг с заходом
+mcp_1c_debug_step_out(targetId=stop.targetId)   // выход из процедуры
+```
+
+### 9. Отключение
+
+```
+mcp_1c_debug_detach()
+```
+
+При зависшей сессии:
+
+```
+mcp_1c_debug_force_detach()
+mcp_1c_debug_attach()
 ```
 
 ## Типичные сценарии
 
 ### Отладка общего модуля
 
-```typescript
-await mcp_1c_debug_attach();
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "ОбщегоНазначения",
-  moduleType: "CommonModule",
-  lines: [42]
-});
-// Пользователь выполняет код в 1С
-const stop = await mcp_1c_debug_wait_for_stop();
-const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-await mcp_1c_debug_continue({ targetId: stop.targetId });
-await mcp_1c_debug_detach();
+```
+mcp_1c_debug_attach()
+mcp_1c_debug_set_breakpoints(moduleName="ОбщегоНазначения", moduleType="CommonModule", lines=[42])
+// выполнить код в 1С
+stop = mcp_1c_debug_wait_for_stop()
+mcp_1c_debug_get_variables(targetId=stop.targetId)
+mcp_1c_debug_continue(targetId=stop.targetId)
+mcp_1c_debug_detach()
 ```
 
-### Отладка внешней обработки
+### Отладка расширения
 
-```typescript
-await mcp_1c_debug_attach();
-const targets = await mcp_1c_debug_get_targets();
-const client = targets.targets.find(t => t.targetType === "ManagedClient");
-await mcp_1c_debug_pause({ targetId: client.targetID.id });
-// Пользователь нажимает кнопку в обработке
-const stop = await mcp_1c_debug_wait_for_stop();
-await mcp_1c_debug_step_in({ targetId: stop.targetId });
-const stop2 = await mcp_1c_debug_wait_for_stop();
-const vars = await mcp_1c_debug_get_variables({ targetId: stop2.targetId });
-await mcp_1c_debug_continue({ targetId: stop2.targetId });
+```
+mcp_1c_debug_attach()
+mcp_1c_debug_set_breakpoints(
+  moduleName="_ДемоЗаказПокупателя",
+  moduleType="ObjectModule",
+  extensionName="_МоёРасширение",
+  lines=[4]
+)
+// записать документ
+stop = mcp_1c_debug_wait_for_stop()
+// → moduleName: "_МоёРасширение:Document._ДемоЗаказПокупателя"
+mcp_1c_debug_continue(targetId=stop.targetId)
 ```
 
-### Отладка серверной процедуры
+### Отладка внешней обработки (EPF)
 
-```typescript
-await mcp_1c_debug_attach();
-const targets = await mcp_1c_debug_get_targets();
-const server = targets.targets.find(t => t.targetType === "ServerEmulation");
-await mcp_1c_debug_set_breakpoints({
-  moduleName: "МодульМенеджераДокумента",
-  moduleType: "ManagerModule",
-  lines: [25],
-  targetId: server.targetID.id
-});
-const stop = await mcp_1c_debug_wait_for_stop();
-const vars = await mcp_1c_debug_get_variables({ targetId: stop.targetId });
-await mcp_1c_debug_continue({ targetId: stop.targetId });
+Точки для EPF не работают — используй pause:
+
+```
+mcp_1c_debug_attach()
+mcp_1c_debug_pause()
+// выполнить действие в обработке
+stop = mcp_1c_debug_wait_for_stop()
+mcp_1c_debug_step_in(targetId=stop.targetId)
+stop2 = mcp_1c_debug_wait_for_stop()
+mcp_1c_debug_get_variables(targetId=stop2.targetId)
+mcp_1c_debug_continue(targetId=stop2.targetId)
 ```
 
 ## Важные ограничения
 
 ### Точки останова для внешних обработок НЕ работают
 
-Ограничение протокола отладки 1С — внешние обработки имеют динамический `objectID`.
-Решение: `pause` (breakOnNextLine) + пошаговое выполнение.
+Ограничение протокола 1С. Решение: `pause` + пошаговое выполнение.
 
-### Серверные процедуры требуют правильной цели
+### extensionName обязателен для расширений
 
-Для `&НаСервере` нужно найти цель через `get_targets()`:
-- `Server` — серверная база (реальный сервер 1С)
-- `ServerEmulation` — файловая база (эмуляция сервера)
+Без `extensionName` авторезолв ищет только в основной конфигурации. Для расширений всегда указывай `extensionName`.
 
-Все типы целей отладки:
+### Серверные процедуры
+
+Для `&НаСервере` точки работают автоматически — сервер подключается как `ServerEmulation` или `Server`.
+
+Типы целей отладки:
 
 | Тип | Описание |
 |---|---|
 | `ManagedClient` | Тонкий клиент (`&НаКлиенте`) |
 | `Server` | Серверный контекст, серверная база |
 | `ServerEmulation` | Серверный контекст, файловая база |
-| `BackgroundJob` | Фоновые задания и регламентные задачи |
+| `BackgroundJob` | Фоновые задания |
 | `WebClient` | Веб-клиент |
-| `MobileClient` | Мобильный клиент |
-| `MobileServer` | Мобильный сервер |
-
-### objectID резолвится автоматически
-
-Если настроены пути к метаданным (`ONEC_CF_PATH` и др.) — `objectID` резолвится
-автоматически по имени модуля. Указывать его явно не нужно.
-
-Если метаданные не настроены — укажи `objectID` вручную:
-получить из XML файла модуля, атрибут `uuid` в корневом элементе.
 
 ## Резолвинг модулей
 
-Если настроены `ONEC_CF_PATH`, `ONEC_CFE_PATHS`, `ONEC_EPF_PATHS` в mcp.json —
-сервер автоматически резолвит `objectID` → `CommonModule.ОбщегоНазначения`.
+Если настроены `ONEC_CF_PATH`, `ONEC_CFE_PATHS`, `ONEC_EPF_PATHS` — сервер автоматически резолвит `objectID`.
 
-Метаданные загружаются **асинхронно в фоне** после старта — MCP подключается мгновенно,
-но для больших конфигураций (20 000+ модулей) загрузка занимает 1–2 минуты.
-Пока идёт загрузка — отладка работает, но авторезолв `objectID` недоступен.
+Статус в `get_targets`:
+- `{ "ready": false }` — ещё загружается
+- `{ "ready": true, "moduleCount": 1975 }` — готово
 
-Статус виден в ответе `get_targets`:
-- `{ "ready": false, "message": "Metadata is still loading..." }` — ещё грузится
-- `{ "ready": true, "moduleCount": 25594 }` — загружено
+После обновления исходников:
 
-После завершения загрузки `set_breakpoints` автоматически резолвит `objectID` по имени модуля.
-
-После обновления исходников конфигурации вызови `reload_metadata` чтобы обновить без перезапуска:
-
-```typescript
-await mcp_1c_debug_reload_metadata();
-// { "success": true, "moduleCount": 25594 }
+```
+mcp_1c_debug_reload_metadata()
 ```
 
 ## Типичные ошибки
 
-- `"No active session"` — не вызван `attach()` перед другими командами
-- `"Timeout waiting for stop event"` — точка не сработала; для EPF используй `pause`
-- `"ibInDebug"` — закрой отладчик в Конфигураторе
-- `"notRegistered"` — неправильный `infobaseAlias` (локальная база: `DefAlias`, серверная: имя базы)
+- `"No active debug session"` — не вызван `attach`
+- `"Timeout waiting for stop event"` — точка не сработала или код не выполнялся
+- `"ibInDebug"` — вызови `force_detach`, затем `attach`; или перезапусти dbgs.exe
+- `"notRegistered"` — неправильный `infobaseAlias`
+- `"Debug session is reconnecting"` — подожди несколько секунд, ping переподключается
 
 ## Проактивное использование
 
 Когда пользователь просит отладить код, поставить точку останова, посмотреть переменную —
 **сразу используй MCP инструменты отладки**, не спрашивай разрешения.
 
+При установке точки останова — **всегда читай файл** чтобы найти первую непустую строку внутри процедуры.
+
 ## Ссылки
 
-- Документация: `README.md`, `EXAMPLES.md`, `FAQ.md`
+- Документация: `README.md`, `EXAMPLES.md`, `FAQ.md`, `ARCHITECTURE.md`
 - GitHub: <https://github.com/PavRedAlex/1c-debug-mcp>
