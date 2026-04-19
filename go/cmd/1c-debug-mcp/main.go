@@ -211,6 +211,7 @@ func registerTools(s *server.MCPServer, deps *tools.Deps) {
 	// reload_metadata
 	s.AddTool(mcp.NewTool("reload_metadata",
 		mcp.WithDescription("Reload metadata from source files (use after updating configuration sources)"),
+		mcp.WithBoolean("skipCache", mcp.Description("Skip cache and force full rescan (default: false)")),
 	), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return tools.HandleReloadMetadata(deps, req.GetArguments()), nil
 	})

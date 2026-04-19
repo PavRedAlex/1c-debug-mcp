@@ -62,7 +62,7 @@ func (p *Provider) Load(cfPath string, cfePaths, epfPaths []string) {
 	p.mu.Unlock()
 
 	go func() {
-		if err := p.doLoad(cfPath, cfePaths, epfPaths); err != nil {
+		if err := p.doLoad(cfPath, cfePaths, epfPaths, false); err != nil {
 			logger.Error("metadata: load error: %v", err)
 		}
 		p.mu.Lock()
@@ -73,7 +73,8 @@ func (p *Provider) Load(cfPath string, cfePaths, epfPaths []string) {
 }
 
 // Reload clears and reloads all metadata from stored paths.
-func (p *Provider) Reload() (int, error) {
+// If skipCache is true, forces full rescan even if cache is valid.
+func (p *Provider) Reload(skipCache bool) (int, error) {
 	p.mu.Lock()
 	cfPath := p.cfPath
 	cfePaths := p.cfePaths
@@ -83,7 +84,7 @@ func (p *Provider) Reload() (int, error) {
 	p.ready = false
 	p.mu.Unlock()
 
-	if err := p.doLoad(cfPath, cfePaths, epfPaths); err != nil {
+	if err := p.doLoad(cfPath, cfePaths, epfPaths, skipCache); err != nil {
 		return 0, err
 	}
 
@@ -157,7 +158,20 @@ func (p *Provider) ResolveObjectID(moduleName, extensionName string) (string, bo
 }
 
 // doLoad performs the actual loading synchronously.
-func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string) error {
+// If skipCache is true, bypasses cache and forces full rescan.
+func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string, skipCache bool) error {
+	// Try to load from cache first (unless skipCache is true)
+	if !skipCache && p.loadFromCache() {
+		return nil
+	}
+
+	// Cache miss, invalid, or bypassed — perform full scan
+	if skipCache {
+		logger.Info("metadata: cache bypassed, performing full scan")
+	} else {
+		logger.Info("metadata: cache miss, performing full scan")
+	}
+
 	if cfPath != "" {
 		if _, err := os.Stat(cfPath); err == nil {
 			before := p.ModuleCount()
@@ -233,11 +247,53 @@ func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string) error {
 		logger.Info("metadata: loaded %d modules from EPF path %s", p.ModuleCount()-before, epfPath)
 	}
 
+	// Save to cache after successful scan
+	if err := p.saveToCache(); err != nil {
+		logger.Error("metadata: failed to save cache: %v", err)
+	}
+
 	return nil
 }
 
 // scanCF scans a configuration directory for module XML files.
+// Uses parallel processing for better performance.
 func (p *Provider) scanCF(cfPath, extensionName string) error {
+	type scanResult struct {
+		uuid  string
+		label string
+		ext   string
+	}
+
+	results := make(chan scanResult, 100)
+	var wg sync.WaitGroup
+
+	// Worker function to process XML files
+	processXML := func(xmlPath, name, typePrefix, extensionName string) {
+		defer wg.Done()
+		uuid := extractUUID(xmlPath)
+		if uuid != "" {
+			var label string
+			if extensionName != "" {
+				label = fmt.Sprintf("%s:%s.%s", extensionName, typePrefix, name)
+			} else {
+				label = fmt.Sprintf("%s.%s", typePrefix, name)
+			}
+			results <- scanResult{uuid: strings.ToLower(uuid), label: label, ext: extensionName}
+		}
+	}
+
+	// Start collector goroutine
+	done := make(chan struct{})
+	go func() {
+		for res := range results {
+			p.mu.Lock()
+			p.objectIDToName[res.uuid] = res.label
+			p.objectIDToExt[res.uuid] = res.ext
+			p.mu.Unlock()
+		}
+		close(done)
+	}()
+
 	for folder, typePrefix := range mdFolders {
 		folderPath := filepath.Join(cfPath, folder)
 		if _, err := os.Stat(folderPath); err != nil {
@@ -253,19 +309,9 @@ func (p *Provider) scanCF(cfPath, extensionName string) error {
 			}
 			xmlPath := filepath.Join(folderPath, entry.Name())
 			name := strings.TrimSuffix(entry.Name(), ".xml")
-			uuid := extractUUID(xmlPath)
-			if uuid != "" {
-				var label string
-				if extensionName != "" {
-					label = fmt.Sprintf("%s:%s.%s", extensionName, typePrefix, name)
-				} else {
-					label = fmt.Sprintf("%s.%s", typePrefix, name)
-				}
-				p.mu.Lock()
-				p.objectIDToName[strings.ToLower(uuid)] = label
-				p.objectIDToExt[strings.ToLower(uuid)] = extensionName
-				p.mu.Unlock()
-			}
+
+			wg.Add(1)
+			go processXML(xmlPath, name, typePrefix, extensionName)
 
 			// Scan forms
 			formsPath := filepath.Join(folderPath, name, "Forms")
@@ -282,22 +328,29 @@ func (p *Provider) scanCF(cfPath, extensionName string) error {
 				}
 				formXMLPath := filepath.Join(formsPath, formEntry.Name())
 				formName := strings.TrimSuffix(formEntry.Name(), ".xml")
-				formUUID := extractUUID(formXMLPath)
-				if formUUID != "" {
-					var label string
-					if extensionName != "" {
-						label = fmt.Sprintf("%s:%s.%s/Form/%s", extensionName, typePrefix, name, formName)
-					} else {
-						label = fmt.Sprintf("%s.%s/Form/%s", typePrefix, name, formName)
+
+				wg.Add(1)
+				go func(xmlPath, objName, formName, typePrefix, extensionName string) {
+					defer wg.Done()
+					formUUID := extractUUID(xmlPath)
+					if formUUID != "" {
+						var label string
+						if extensionName != "" {
+							label = fmt.Sprintf("%s:%s.%s/Form/%s", extensionName, typePrefix, objName, formName)
+						} else {
+							label = fmt.Sprintf("%s.%s/Form/%s", typePrefix, objName, formName)
+						}
+						results <- scanResult{uuid: strings.ToLower(formUUID), label: label, ext: extensionName}
 					}
-					p.mu.Lock()
-					p.objectIDToName[strings.ToLower(formUUID)] = label
-					p.objectIDToExt[strings.ToLower(formUUID)] = extensionName
-					p.mu.Unlock()
-				}
+				}(formXMLPath, name, formName, typePrefix, extensionName)
 			}
 		}
 	}
+
+	wg.Wait()
+	close(results)
+	<-done
+
 	return nil
 }
 
@@ -342,12 +395,22 @@ func (p *Provider) scanEPF(epfRoot string) error {
 var uuidRegex = regexp.MustCompile(`uuid="([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"`)
 
 // extractUUID reads the first uuid attribute from an XML file.
+// Optimized to read only the first 2KB instead of the entire file.
 func extractUUID(xmlPath string) string {
-	content, err := os.ReadFile(xmlPath)
+	f, err := os.Open(xmlPath)
 	if err != nil {
 		return ""
 	}
-	m := uuidRegex.FindSubmatch(content)
+	defer f.Close()
+
+	// Read only first 2KB — UUID is always at the beginning
+	buf := make([]byte, 2048)
+	n, err := f.Read(buf)
+	if err != nil && n == 0 {
+		return ""
+	}
+
+	m := uuidRegex.FindSubmatch(buf[:n])
 	if m == nil {
 		return ""
 	}

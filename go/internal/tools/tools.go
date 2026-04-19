@@ -625,14 +625,27 @@ func HandleGetCallStack(deps *Deps, args map[string]interface{}) *mcp.CallToolRe
 		"callStack":  callStack,
 	})
 }
-func HandleReloadMetadata(deps *Deps, _ map[string]interface{}) *mcp.CallToolResult {
-	count, err := deps.Metadata.Reload()
+func HandleReloadMetadata(deps *Deps, args map[string]interface{}) *mcp.CallToolResult {
+	skipCache := false
+	if val, ok := args["skipCache"].(bool); ok {
+		skipCache = val
+	}
+
+	count, err := deps.Metadata.Reload(skipCache)
 	if err != nil {
 		return errResult(fmt.Sprintf("Failed to reload metadata: %v", err))
 	}
+
+	msg := fmt.Sprintf("Reloaded %d modules", count)
+	if skipCache {
+		msg += " (cache bypassed)"
+	}
+
 	return toolResult(map[string]interface{}{
 		"success":     true,
 		"moduleCount": count,
+		"skipCache":   skipCache,
+		"message":     msg,
 	})
 }
 

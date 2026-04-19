@@ -24,18 +24,24 @@ export class MetadataProvider {
     this._cfPath = cfPath;
     this._cfePaths = cfePaths;
     this._epfPaths = epfPaths;
-    await this._doLoad(cfPath, cfePaths, epfPaths);
+    await this._doLoad(cfPath, cfePaths, epfPaths, false);
   }
 
-  async reload(): Promise<{ moduleCount: number }> {
+  async reload(skipCache = false): Promise<{ moduleCount: number }> {
     this._ready = false;
     this.objectIdToName.clear();
     this.objectIdToExtension.clear();
-    await this._doLoad(this._cfPath, this._cfePaths, this._epfPaths);
+    await this._doLoad(this._cfPath, this._cfePaths, this._epfPaths, skipCache);
     return { moduleCount: this.objectIdToName.size };
   }
 
-  private async _doLoad(cfPath?: string, cfePaths?: string[], epfPaths?: string[]): Promise<void> {
+  private async _doLoad(cfPath?: string, cfePaths?: string[], epfPaths?: string[], skipCache = false): Promise<void> {
+    // Note: TypeScript version doesn't implement caching yet
+    // skipCache parameter is accepted for API compatibility with Go version
+    if (skipCache) {
+      process.stderr.write(`[MetadataProvider] skipCache requested (not implemented in TS version)\n`);
+    }
+
     if (cfPath) {
       const absPath = resolve(process.cwd(), cfPath);
       if (await this.exists(absPath)) {

@@ -184,13 +184,22 @@ server.tool(
 server.tool(
   "reload_metadata",
   "Reload metadata from source files (use after updating configuration sources)",
-  {},
-  async () => {
-    process.stderr.write("[1c-debug] Reloading metadata...\n");
-    const result = await metadata.reload();
-    process.stderr.write(`[1c-debug] Metadata reloaded: ${result.moduleCount} modules\n`);
+  {
+    skipCache: z.boolean().optional().describe("Skip cache and force full rescan (default: false)"),
+  },
+  async (args) => {
+    const skipCache = args.skipCache ?? false;
+    process.stderr.write(`[1c-debug] Reloading metadata${skipCache ? " (cache bypassed)" : ""}...\n`);
+    const result = await metadata.reload(skipCache);
+    const msg = `Reloaded ${result.moduleCount} modules${skipCache ? " (cache bypassed)" : ""}`;
+    process.stderr.write(`[1c-debug] ${msg}\n`);
     return {
-      content: [{ type: "text" as const, text: JSON.stringify({ success: true, moduleCount: result.moduleCount }) }],
+      content: [{ type: "text" as const, text: JSON.stringify({ 
+        success: true, 
+        moduleCount: result.moduleCount,
+        skipCache,
+        message: msg,
+      }) }],
     };
   },
 );

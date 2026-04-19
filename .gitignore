@@ -10,6 +10,9 @@ npm-debug.log*
 # 1C debug project config (developer-specific, keep .example in repo)
 .1c-debug.json
 
+# Metadata cache (auto-generated)
+.1c-debug-metadata-cache.json
+
 # IDE
 .vscode/
 .idea/
