@@ -15,6 +15,16 @@ var ModulePropertyID = map[string]string{
 	"OrdinaryApplicationModule": "a78d9ce3-4e0c-48d5-9863-ae7342eedf94",
 }
 
+// PropertyIDToModuleType is the reverse mapping: property UUID → module type name
+var PropertyIDToModuleType map[string]string
+
+func init() {
+	PropertyIDToModuleType = make(map[string]string, len(ModulePropertyID))
+	for k, v := range ModulePropertyID {
+		PropertyIDToModuleType[v] = k
+	}
+}
+
 // ModuleTypePrefix maps simple module type to 1C platform composite type prefix
 var ModuleTypePrefix = map[string]string{
 	"ObjectModule":              "DocumentObject",

@@ -434,9 +434,16 @@ func HandleWaitForStop(deps *Deps, args map[string]interface{}) *mcp.CallToolRes
 				name = n
 			}
 		}
+		if name == "" {
+			name = f.ModuleID.URL
+		}
+		moduleType := f.ModuleID.Type
+		if moduleType == "" && f.ModuleID.PropertyID != "" {
+			moduleType = xmlproto.PropertyIDToModuleType[f.ModuleID.PropertyID]
+		}
 		callStack = append(callStack, frameJSON{
 			ModuleID: map[string]string{
-				"type":          f.ModuleID.Type,
+				"type":          moduleType,
 				"name":          name,
 				"url":           f.ModuleID.URL,
 				"objectID":      f.ModuleID.ObjectID,
@@ -574,6 +581,7 @@ func HandleGetCallStack(deps *Deps, args map[string]interface{}) *mcp.CallToolRe
 		LineNo   int         `json:"lineNo"`
 	}
 	var callStack []frameJSON
+	topModuleName := ""
 	for _, f := range lastStop.CallStack {
 		name := f.ModuleID.Type
 		if f.ModuleID.ObjectID != "" {
@@ -581,9 +589,20 @@ func HandleGetCallStack(deps *Deps, args map[string]interface{}) *mcp.CallToolRe
 				name = n
 			}
 		}
+		if name == "" {
+			name = f.ModuleID.URL
+		}
+		// Determine module type from propertyID if type is empty
+		moduleType := f.ModuleID.Type
+		if moduleType == "" && f.ModuleID.PropertyID != "" {
+			moduleType = xmlproto.PropertyIDToModuleType[f.ModuleID.PropertyID]
+		}
+		if topModuleName == "" {
+			topModuleName = name
+		}
 		callStack = append(callStack, frameJSON{
 			ModuleID: map[string]string{
-				"type":          f.ModuleID.Type,
+				"type":          moduleType,
 				"name":          name,
 				"url":           f.ModuleID.URL,
 				"objectID":      f.ModuleID.ObjectID,
@@ -594,9 +613,14 @@ func HandleGetCallStack(deps *Deps, args map[string]interface{}) *mcp.CallToolRe
 		})
 	}
 
+	moduleName := lastStop.ModuleName
+	if moduleName == "" {
+		moduleName = topModuleName
+	}
+
 	return toolResult(map[string]interface{}{
 		"targetId":   lastStop.TargetID,
-		"moduleName": lastStop.ModuleName,
+		"moduleName": moduleName,
 		"lineNo":     lastStop.LineNo,
 		"callStack":  callStack,
 	})
