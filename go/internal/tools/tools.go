@@ -19,12 +19,13 @@ import (
 
 // Config holds the default configuration values from environment.
 type Config struct {
-	URL      string
-	Alias    string
-	Password string
-	CFPath   string
-	CFEPaths []string
-	EPFPaths []string
+	URL          string
+	Alias        string
+	Password     string
+	CFPath       string
+	CFEPaths     []string
+	EPFPaths     []string
+	DisableCache bool
 }
 
 // Deps holds all dependencies for tool handlers.

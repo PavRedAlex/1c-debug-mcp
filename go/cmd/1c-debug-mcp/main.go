@@ -48,7 +48,7 @@ func main() {
 
 	// Start metadata loading in background (non-blocking)
 	if cfg.CFPath != "" || len(cfg.CFEPaths) > 0 || len(cfg.EPFPaths) > 0 {
-		metaProvider.Load(cfg.CFPath, cfg.CFEPaths, cfg.EPFPaths)
+		metaProvider.Load(cfg.CFPath, cfg.CFEPaths, cfg.EPFPaths, cfg.DisableCache)
 	}
 
 	// Log config
@@ -237,12 +237,13 @@ func parseConfig() *tools.Config {
 	flag.Parse()
 
 	cfg := &tools.Config{
-		URL:      orStr(urlFlag, os.Getenv("ONEC_DEBUG_URL")),
-		Alias:    orStr(aliasFlag, os.Getenv("ONEC_INFOBASE_ALIAS")),
-		Password: orStr(passwordFlag, os.Getenv("ONEC_DEBUG_PASSWORD")),
-		CFPath:   orStr(cfPathFlag, os.Getenv("ONEC_CF_PATH")),
-		CFEPaths: splitPaths(os.Getenv("ONEC_CFE_PATHS")),
-		EPFPaths: splitPaths(os.Getenv("ONEC_EPF_PATHS")),
+		URL:          orStr(urlFlag, os.Getenv("ONEC_DEBUG_URL")),
+		Alias:        orStr(aliasFlag, os.Getenv("ONEC_INFOBASE_ALIAS")),
+		Password:     orStr(passwordFlag, os.Getenv("ONEC_DEBUG_PASSWORD")),
+		CFPath:       orStr(cfPathFlag, os.Getenv("ONEC_CF_PATH")),
+		CFEPaths:     splitPaths(os.Getenv("ONEC_CFE_PATHS")),
+		EPFPaths:     splitPaths(os.Getenv("ONEC_EPF_PATHS")),
+		DisableCache: os.Getenv("ONEC_DISABLE_CACHE") == "true",
 	}
 	return cfg
 }

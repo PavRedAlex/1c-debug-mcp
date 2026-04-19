@@ -43,6 +43,7 @@ type Provider struct {
 	cfPath         string
 	cfePaths       []string
 	epfPaths       []string
+	disableCache   bool
 }
 
 // New creates a new Provider.
@@ -54,15 +55,17 @@ func New() *Provider {
 }
 
 // Load starts background loading of metadata from the given paths.
-func (p *Provider) Load(cfPath string, cfePaths, epfPaths []string) {
+func (p *Provider) Load(cfPath string, cfePaths, epfPaths []string, disableCache bool) {
 	p.mu.Lock()
 	p.cfPath = cfPath
 	p.cfePaths = cfePaths
 	p.epfPaths = epfPaths
+	p.disableCache = disableCache
 	p.mu.Unlock()
 
 	go func() {
-		if err := p.doLoad(cfPath, cfePaths, epfPaths, false); err != nil {
+		skipCache := disableCache
+		if err := p.doLoad(cfPath, cfePaths, epfPaths, skipCache); err != nil {
 			logger.Error("metadata: load error: %v", err)
 		}
 		p.mu.Lock()
@@ -160,14 +163,21 @@ func (p *Provider) ResolveObjectID(moduleName, extensionName string) (string, bo
 // doLoad performs the actual loading synchronously.
 // If skipCache is true, bypasses cache and forces full rescan.
 func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string, skipCache bool) error {
-	// Try to load from cache first (unless skipCache is true)
-	if !skipCache && p.loadFromCache() {
+	// Check if cache is globally disabled
+	p.mu.RLock()
+	cacheDisabled := p.disableCache
+	p.mu.RUnlock()
+
+	// Try to load from cache first (unless skipCache is true or cache is disabled)
+	if !skipCache && !cacheDisabled && p.loadFromCache() {
 		return nil
 	}
 
-	// Cache miss, invalid, or bypassed — perform full scan
+	// Cache miss, invalid, bypassed, or disabled — perform full scan
 	if skipCache {
 		logger.Info("metadata: cache bypassed, performing full scan")
+	} else if cacheDisabled {
+		logger.Info("metadata: cache disabled, performing full scan")
 	} else {
 		logger.Info("metadata: cache miss, performing full scan")
 	}
@@ -247,9 +257,11 @@ func (p *Provider) doLoad(cfPath string, cfePaths, epfPaths []string, skipCache 
 		logger.Info("metadata: loaded %d modules from EPF path %s", p.ModuleCount()-before, epfPath)
 	}
 
-	// Save to cache after successful scan
-	if err := p.saveToCache(); err != nil {
-		logger.Error("metadata: failed to save cache: %v", err)
+	// Save to cache after successful scan (only if cache is not disabled)
+	if !cacheDisabled {
+		if err := p.saveToCache(); err != nil {
+			logger.Error("metadata: failed to save cache: %v", err)
+		}
 	}
 
 	return nil
